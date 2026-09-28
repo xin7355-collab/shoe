@@ -1519,7 +1519,7 @@ ${imgs.length?`另附 ${imgs.length} 張現場照片，請判讀牆面、開口�
 }
 
 /* ================= 黑科技：離線 PWA、永久儲存、螢幕常亮、備份提醒 ================= */
-const canPWA=('serviceWorker' in navigator)&&(location.protocol==='https:'||location.hostname==='localhost')&&!/claude\.ai|claudeusercontent|anthropic/.test(location.hostname);
+const canPWA=('serviceWorker' in navigator)&&(location.protocol==='https:'||location.hostname==='localhost')&&!/claude|anthropic/i.test(location.hostname);
 function daysSince(d){const t=Date.parse(d);return Number.isFinite(t)?Math.floor((Date.now()-t)/864e5):9999}
 function backupDue(){return projects.length>0&&(!settings.lastBackup||daysSince(settings.lastBackup)>=7)}
 let wakeLock=null;
