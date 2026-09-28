@@ -1,0 +1,1505 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="門窗丈量">
+<meta name="theme-color" content="#F5C518">
+<title>門窗丈量</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+:root{
+  --bg:#E7EAED;--surface:#FFFFFF;--ink:#1B2430;--muted:#5D6B7A;--line:#CBD2D9;
+  --tape:#F5C518;--tape-ink:#1B2430;--dim:#0B7285;--danger:#B42318;--chip:#F1F3F5;--ok:#1E7B4F;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){--bg:#13181E;--surface:#1D242C;--ink:#E4E9EE;--muted:#98A6B4;--line:#33404C;--dim:#3BC9DB;--danger:#F97066;--chip:#26303A;--ok:#5FD39B}
+}
+:root[data-theme="dark"]{--bg:#13181E;--surface:#1D242C;--ink:#E4E9EE;--muted:#98A6B4;--line:#33404C;--dim:#3BC9DB;--danger:#F97066;--chip:#26303A;--ok:#5FD39B}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);
+  font:16px/1.5 -apple-system,"PingFang TC","Heiti TC","Noto Sans TC",sans-serif;-webkit-text-size-adjust:100%}
+button{font:inherit;color:inherit;cursor:pointer}
+a{color:var(--dim)}
+:focus-visible{outline:3px solid var(--dim);outline-offset:2px}
+
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:10;background:var(--tape);color:var(--tape-ink)}
+.bar-inner{display:flex;align-items:center;gap:8px;min-height:54px;padding:6px 12px;max-width:760px;margin:0 auto}
+.bar::after{content:"";display:block;height:12px;background:
+  repeating-linear-gradient(90deg,var(--tape-ink) 0 1.5px,transparent 1.5px 10px) left bottom/100% 5px no-repeat,
+  repeating-linear-gradient(90deg,var(--tape-ink) 0 2px,transparent 2px 50px) left bottom/100% 12px no-repeat}
+.title{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-family:"Barlow Condensed","PingFang TC",sans-serif;font-weight:700;font-size:23px}
+.back,.barbtn{appearance:none;border:0;background:transparent;font-weight:600;padding:8px 4px;min-height:44px;max-width:40%;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--tape-ink)}
+.barbtn{border:1.5px solid var(--tape-ink);border-radius:10px;padding:6px 12px;min-height:38px}
+
+main{max-width:760px;margin:0 auto;padding:16px 14px 56px}
+h2{font-size:15px;font-weight:600;color:var(--muted);margin:26px 2px 8px}
+.num{font-family:"Barlow Condensed",-apple-system,sans-serif;font-variant-numeric:tabular-nums}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.pad{padding:14px}
+
+.b{appearance:none;display:block;width:100%;border:1px solid var(--line);background:var(--surface);color:var(--ink);
+  border-radius:12px;padding:12px 16px;font-weight:600;min-height:50px;text-align:center}
+.b.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.b.ghost{background:transparent;border-color:transparent}
+.b.danger{color:var(--danger)}
+.b:disabled{opacity:.5}
+.stack{display:grid;gap:10px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.note{font-size:14px;color:var(--muted);margin:12px 2px}
+.empty{color:var(--muted);text-align:center;padding:30px 16px}
+
+.search{margin-top:14px}
+.list{display:grid;gap:10px;margin-top:14px}
+.card{appearance:none;display:grid;grid-template-columns:1fr auto;gap:3px 12px;width:100%;text-align:left;
+  background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.card b{font-size:17px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card small{color:var(--muted);font-size:13px;grid-column:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card .big{grid-row:1/4;grid-column:2;align-self:center;text-align:right;font-size:26px;font-weight:600;line-height:1}
+.card .big small{display:block;font-family:-apple-system,"PingFang TC",sans-serif;font-size:12px;margin-top:4px}
+.st{display:inline-block;font-size:12px;font-weight:600;border:1px solid var(--line);border-radius:6px;padding:0 6px;margin-right:6px;color:var(--muted)}
+.st.s2,.st.s3{color:var(--dim);border-color:var(--dim)}
+.st.s4{color:var(--ok);border-color:var(--ok)}
+
+.item{appearance:none;display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;width:100%;
+  text-align:left;padding:13px 14px;border:0;border-bottom:1px solid var(--line);background:transparent}
+.item:last-child{border-bottom:0}
+.idx{font:700 20px/1 "Barlow Condensed",sans-serif;color:var(--muted)}
+.nm{min-width:0}.nm b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nm small{color:var(--muted);font-size:13px}
+.size{font:600 22px/1.1 "Barlow Condensed",sans-serif;text-align:right;white-space:nowrap}
+.size small{display:block;font:500 13px/1.4 -apple-system,"PingFang TC",sans-serif;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.chip{appearance:none;border:1px dashed var(--muted);background:transparent;border-radius:999px;padding:9px 15px;font-weight:600;min-height:44px}
+.chip.on{border-style:solid;background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.tot{display:flex;flex-wrap:wrap;gap:4px 18px;padding:10px 4px 0;color:var(--muted);font-size:14px;align-items:baseline}
+.tot b{font:600 24px/1 "Barlow Condensed",sans-serif;color:var(--ink);margin-right:3px}
+
+.form{padding:14px;display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fld{display:flex;flex-direction:column;gap:5px;min-width:0}
+.fld.full{grid-column:1/-1}
+.fld>span{font-size:13px;color:var(--muted);font-weight:600}
+.fld em{font-style:normal;font-weight:400;margin-left:6px}
+.fld .row{display:flex;gap:8px}
+.fld .row a{display:flex;align-items:center;justify-content:center;min-width:58px;border:1px solid var(--line);border-radius:10px;font-size:14px;font-weight:600;text-decoration:none}
+input,select,textarea{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);
+  border-radius:10px;padding:11px 12px;min-height:46px;-webkit-appearance:none;appearance:none;margin:0}
+textarea{min-height:84px;resize:vertical}
+select{padding-right:32px;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 18px) 52%,calc(100% - 13px) 52%;background-size:5px 5px;background-repeat:no-repeat}
+.suf{position:relative}
+.suf input{padding-right:46px;font:600 21px/1 "Barlow Condensed",-apple-system,sans-serif}
+.suf i{position:absolute;right:12px;top:50%;transform:translateY(-50%);font-style:normal;color:var(--muted);font-size:14px;pointer-events:none}
+.tog{flex-direction:row;align-items:center;justify-content:space-between;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:6px 8px 6px 12px;min-height:46px;align-self:end}
+.tog>span{font-size:15px;color:var(--ink)}
+.tog input{width:52px;height:32px;min-height:0;padding:0;border:0;border-radius:16px;background:var(--line);position:relative;flex:none}
+.tog input::after{content:"";position:absolute;top:3px;left:3px;width:26px;height:26px;border-radius:50%;background:#fff;transition:transform .15s}
+.tog input:checked{background:var(--dim)}
+.tog input:checked::after{transform:translateX(20px)}
+
+.tabs{display:flex;gap:6px;margin-bottom:8px}
+.tabs button{appearance:none;flex:1;border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:9px;font-weight:600;min-height:44px}
+.tabs button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.paper{background:#fff;border:1px solid var(--line);border-radius:14px;padding:6px;overflow:auto}
+.paper svg{display:block;width:100%;height:auto}
+.v3{background:#EEF1F4;border:1px solid var(--line);border-radius:14px;overflow:hidden;position:relative;min-height:240px}
+.v3 canvas{display:block;touch-action:none;width:100%}
+.v3 .msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#5D6B7A;font-weight:600;text-align:center;padding:20px}
+.views{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.views button{appearance:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:7px 13px;font-size:14px;font-weight:600;min-height:40px}
+.views button.on{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.prow{display:grid;grid-template-columns:40px 1fr 1fr 62px 42px;gap:6px;align-items:center;margin-bottom:6px}
+.prow b{font:700 17px/1 "Barlow Condensed",sans-serif;color:var(--muted)}
+.prow input{min-height:42px;padding:8px 10px;font:600 19px/1 "Barlow Condensed",-apple-system,sans-serif}
+.mini{display:flex;align-items:center;gap:4px;font-size:13px;color:var(--muted)}
+.mini input{width:20px;height:20px;min-height:0;padding:0;-webkit-appearance:checkbox;appearance:auto}
+.x{appearance:none;border:1px solid var(--line);background:var(--surface);border-radius:10px;min-height:42px;color:var(--danger);font-weight:700}
+.paper svg *{pointer-events:none}
+.paper svg [data-cell]{pointer-events:auto;cursor:pointer}
+.metric{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;padding:12px 4px 2px;color:var(--muted);font-size:14px}
+.metric b{font:600 36px/1 "Barlow Condensed",sans-serif;color:var(--ink);margin-right:2px}
+.warn{flex-basis:100%;color:var(--danger);font-size:14px;font-weight:600}
+.info{flex-basis:100%;color:var(--dim);font-size:14px;font-weight:600}
+
+.photos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.ph{appearance:none;aspect-ratio:1;border-radius:10px;overflow:hidden;border:0;padding:0;background:var(--chip);position:relative}
+.ph img{width:100%;height:100%;object-fit:cover;display:block}
+.ph.sel{outline:3px solid var(--dim);outline-offset:-3px}
+.ph.sel::after{content:"✓";position:absolute;top:6px;right:6px;width:24px;height:24px;border-radius:50%;background:var(--dim);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:14px}
+.addph{display:flex;align-items:center;justify-content:center;aspect-ratio:1;border:1px dashed var(--muted);border-radius:10px;color:var(--muted);font-weight:600;cursor:pointer;text-align:center;padding:6px}
+.vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden}
+.ai-out{white-space:pre-wrap;font-size:15px;line-height:1.65;padding:14px;border-top:1px solid var(--line)}
+.ai-out:empty{display:none}
+.logo{width:88px;height:88px;border-radius:12px;border:1px dashed var(--muted);display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer;color:var(--muted);font-size:13px;text-align:center}
+.logo img{max-width:100%;max-height:100%}
+.pricerow{display:grid;grid-template-columns:1fr 130px;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid var(--line)}
+.pricerow:last-child{border-bottom:0}
+
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:60;
+  background:var(--ink);color:var(--bg);padding:11px 18px;border-radius:12px;font-weight:600;max-width:88vw;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.on{opacity:1}
+.busy{position:fixed;inset:0;z-index:50;background:rgba(19,24,30,.55);display:none;align-items:center;justify-content:center;color:#fff;font-weight:600;font-size:17px}
+.busy.on{display:flex}
+.sheet{position:fixed;inset:0;z-index:55;background:rgba(19,24,30,.5);display:flex;align-items:flex-end;justify-content:center;padding:14px;padding-bottom:calc(14px + env(safe-area-inset-bottom,0px))}
+.sheet-box{background:var(--surface);border-radius:16px;padding:18px;width:100%;max-width:520px;max-height:86vh;overflow:auto}
+.sheet-box p{margin:0 0 16px;font-size:17px}
+.sheet-box textarea{min-height:260px;font-size:14px;margin-bottom:12px}
+.sheet-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+@media (min-width:600px){.photos{grid-template-columns:repeat(4,1fr)}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="busy" id="busy"><span id="busyText">處理中…</span></div>
+<script>
+(()=>{
+'use strict';
+/* ================= 資料定義 ================= */
+const OPT={
+  series:['一般窗','氣密窗','隔音氣密窗','景觀窗','其他'],
+  glass:['5mm 清玻璃','5mm 綠玻璃','5mm 霧面玻璃','8mm 強化玻璃','5+5 膠合玻璃','複層玻璃','其他'],
+  color:['白色','銀色','香檳金','咖啡色','黑色','其他'],
+  dir:['上推','左側推','右側推'],
+  style:['單開','雙開','橫拉門'],
+  hinge:['左','右'],
+  panel:['PC耐力板 6mm','PC耐力板 8mm','PC中空板','強化玻璃 8mm','膠合玻璃 5+5','鋁板','其他'],
+  frame:['鋁骨架','鍍鋅鋼骨架','不鏽鋼骨架'],
+  drain:['前排水','左側排水','右側排水']
+};
+const STATUS=['丈量中','已報價','已下單','施工中','已完工'];
+const FIELDS={
+  tri:{l:'三點量測（取最小值）',t:'bool'},
+  W:{l:'寬',t:'len'},H:{l:'高',t:'len'},
+  W1:{l:'寬（上）',t:'len'},W2:{l:'寬（中）',t:'len'},W3:{l:'寬（下）',t:'len'},
+  H1:{l:'高（左）',t:'len'},H2:{l:'高（中）',t:'len'},H3:{l:'高（右）',t:'len'},
+  panels:{l:'扇數',t:'sel',o:[2,3,4]},
+  screen:{l:'紗窗',t:'bool'},
+  cols:{l:'直向分割',t:'int',min:1,max:8},
+  rows:{l:'橫向分割',t:'int',min:1,max:8},
+  sash:{l:'扇數',t:'int',min:1,max:6},
+  dir:{l:'開啟方式',t:'sel',o:OPT.dir},
+  style:{l:'門型',t:'sel',o:OPT.style},
+  hinge:{l:'鉸鏈側（外看）',t:'sel',o:OPT.hinge},
+  transom:{l:'上氣窗高',t:'len',hint:'0 = 無'},
+  series:{l:'窗型系列',t:'sel',o:OPT.series},
+  glass:{l:'玻璃',t:'sel',o:OPT.glass},
+  color:{l:'顏色',t:'sel',o:OPT.color},
+  L:{l:'長（沿牆）',t:'len'},D:{l:'深（出挑）',t:'len'},
+  Hb:{l:'後高（牆側）',t:'len'},Hf:{l:'前高',t:'len'},
+  posts:{l:'立柱數',t:'int',min:0,max:12,hint:'0 = 掛壁式'},
+  spacing:{l:'骨架間距（沿長向）',t:'len'},
+  pspacing:{l:'橫料間距（沿斜面）',t:'len'},
+  panel:{l:'板材',t:'sel',o:OPT.panel},
+  frame:{l:'骨架',t:'sel',o:OPT.frame},
+  drain:{l:'排水',t:'sel',o:OPT.drain}
+};
+const TYPES={
+  slide:{n:'橫拉窗',f:['tri','W','H','panels','screen','series','glass','color'],d:{W:1800,H:1200,panels:2,screen:true}},
+  fixed:{n:'固定窗',f:['tri','W','H','cols','rows','series','glass','color'],d:{W:1200,H:1200,cols:1,rows:1}},
+  casement:{n:'推射窗',f:['tri','W','H','sash','dir','screen','series','glass','color'],d:{W:900,H:1200,sash:1,screen:true}},
+  louver:{n:'百葉窗',f:['tri','W','H','cols','screen','color'],d:{W:1000,H:1100,cols:1}},
+  door:{n:'門',f:['tri','W','H','style','hinge','transom','series','glass','color'],d:{W:900,H:2100,transom:0}},
+  canopy:{n:'採光罩',f:['L','D','Hb','Hf','posts','spacing','pspacing','panel','frame','drain','color'],d:{L:5000,D:2000,Hb:3000,Hf:2600,posts:2,spacing:600,pspacing:1000}}
+};
+const LOCS=['客廳','主臥','次臥','小孩房','書房','廚房','浴室','陽台','後陽台','樓梯間','前門','後門','頂樓','車庫'];
+const DEF_SETTINGS={co:{name:'',phone:'',addr:'',taxid:'',line:'',staff:''},logo:null,
+  prices:{slide:0,fixed:0,casement:0,louver:0,door:0,canopy:0},minCai:0,tax:false,
+  terms:'1. 本報價有效期限 30 天。\n2. 尺寸以現場丈量為準，下單後依實際尺寸計價。\n3. 訂金 30%，完工驗收後付清尾款。',
+  pdfQuote:true,pdfPhotos:true};
+
+/* ================= 工具 ================= */
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const r1=n=>Math.round(n*10)/10;
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const money=n=>'NT$ '+Math.round(n).toLocaleString('zh-TW');
+let unit='cm';
+try{unit=localStorage.getItem('mw_unit')==='mm'?'mm':'cm'}catch(e){}
+function fmtLen(mm){const v=Number(mm)||0;if(unit==='mm')return String(Math.round(v));return String(Math.round(v)/10)}
+function parseLen(s){const n=parseFloat(String(s).replace(',','.'));if(!Number.isFinite(n))return null;return unit==='cm'?Math.round(n*10):Math.round(n)}
+function withUnit(u,fn){const o=unit;unit=u;try{return fn()}finally{unit=o}}
+function today(){const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('on');clearTimeout(toast._t);toast._t=setTimeout(()=>t.classList.remove('on'),2600)}
+function busy(on,msg){$('#busyText').textContent=msg||'處理中…';$('#busy').classList.toggle('on',!!on)}
+function modal(html,onClick){const m=document.createElement('div');m.className='sheet';
+  m.innerHTML=`<div class="sheet-box" role="dialog" aria-modal="true">${html}</div>`;
+  m.addEventListener('click',e=>{if(e.target===m){m.remove();return}onClick&&onClick(e,m)});
+  document.body.appendChild(m);return m}
+function ask(msg,ok){return new Promise(res=>{
+  const m=modal(`<p>${esc(msg)}</p><div class="sheet-row"><button class="b" data-r="0">取消</button><button class="b danger" data-r="1">${esc(ok||'刪除')}</button></div>`,
+    (e,mm)=>{const b=e.target.closest('[data-r]');if(!b)return;mm.remove();res(b.dataset.r==='1')});
+  m.addEventListener('click',e=>{if(e.target===m)res(false)});
+  m.querySelector('[data-r="0"]').focus();
+})}
+async function copyText(s){
+  try{await navigator.clipboard.writeText(s);toast('已複製');return true}catch(e){}
+  const t=document.createElement('textarea');t.value=s;t.setAttribute('readonly','');t.style.position='fixed';t.style.opacity='0';
+  document.body.appendChild(t);t.select();t.setSelectionRange(0,s.length);let ok=false;try{ok=document.execCommand('copy')}catch(e){}
+  t.remove();toast(ok?'已複製':'無法自動複製，請長按文字框手動複製');return ok;
+}
+function loadImg(src){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('圖片讀取失敗'));i.src=src})}
+function dataURLtoBlob(d){const [h,b]=d.split(',');const mime=(h.match(/data:([^;]+)/)||[])[1]||'image/jpeg';const bin=atob(b);const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return new Blob([u],{type:mime})}
+
+/* ================= 儲存 ================= */
+const store={db:null,mem:new Map(),
+  open(){return new Promise(res=>{try{const r=indexedDB.open('mw-measure',1);
+    r.onupgradeneeded=()=>r.result.createObjectStore('kv');
+    r.onsuccess=()=>{this.db=r.result;res(true)};r.onerror=()=>res(false);r.onblocked=()=>res(false);
+  }catch(e){res(false)}})},
+  get(k){if(!this.db)return Promise.resolve(this.mem.get(k));return new Promise(res=>{try{const q=this.db.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>res(undefined)}catch(e){res(undefined)}})},
+  set(k,v){if(!this.db){this.mem.set(k,v);return Promise.resolve(false)}return new Promise(res=>{try{const tx=this.db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false)}catch(e){res(false)}})},
+  del(k){if(!this.db){this.mem.delete(k);return Promise.resolve()}return new Promise(res=>{try{const tx=this.db.transaction('kv','readwrite');tx.objectStore('kv').delete(k);tx.oncomplete=()=>res();tx.onerror=()=>res()}catch(e){res()}})}
+};
+
+let projects=[];
+let settings=JSON.parse(JSON.stringify(DEF_SETTINGS));
+let logoImg=null;
+let view={name:'list',pid:null,iid:null,tab:'plan'};
+const photoCache=new Map();
+let saveT=null,saveST=null;
+function save(){clearTimeout(saveT);saveT=setTimeout(()=>store.set('projects',projects),350)}
+function saveSettings(){clearTimeout(saveST);saveST=setTimeout(()=>store.set('settings',settings),350)}
+function flush(){clearTimeout(saveT);clearTimeout(saveST);store.set('projects',projects);store.set('settings',settings)}
+addEventListener('pagehide',flush);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flush()});
+function mergeSettings(s){const d=JSON.parse(JSON.stringify(DEF_SETTINGS));if(!s||typeof s!=='object')return d;
+  return {...d,...s,co:{...d.co,...(s.co||{})},prices:{...d.prices,...(s.prices||{})}}}
+async function refreshLogo(){logoImg=null;if(settings.logo){try{logoImg=await loadImg(settings.logo)}catch(e){}}}
+
+const cur=()=>projects.find(p=>p.id===view.pid);
+const curItem=()=>{const p=cur();return p&&p.items.find(i=>i.id===view.iid)};
+function normProject(p){const o={status:STATUS[0],extra:0,extraNote:'',phone:'',addr:'',note:'',photos:[],items:[],...p};o.items=(o.items||[]).filter(it=>it&&TYPES[it.type]).map(upgradeItem);return o}
+
+function newItem(type){const t=TYPES[type];const p=JSON.parse(JSON.stringify(t.d));
+  for(const k of t.f){const f=FIELDS[k];if(p[k]!==undefined)continue;
+    if(f.t==='sel')p[k]=f.o[0];else if(f.t==='bool')p[k]=false;else if(f.t==='int')p[k]=f.min;else if(f.t==='list')p[k]=[];else p[k]=0;}
+  return {id:uid(),type,loc:'',qty:1,note:'',p};
+}
+
+/* ================= 計算 ================= */
+function metrics(it){const p=it.p,q=it.qty||1;
+  if(it.type==='canopy')return canopyMetrics(it);
+  const one=((+p.W||0)/10)*((+p.H||0)/10)/918.09;return {one,cai:one*q};
+}
+function triSpread(p,key){const v=[p[key+'1'],p[key+'2'],p[key+'3']].map(Number).filter(x=>x>0);return v.length?Math.max(...v)-Math.min(...v):0}
+function warnings(it){const p=it.p,w=[];
+  if(it.type==='canopy')return canopyWarnings(it);
+  {
+    if(p.tri){const dw=triSpread(p,'W'),dh=triSpread(p,'H');
+      if(dw>5)w.push(`寬度上中下相差 ${dw} mm，開口不正，已取最小值`);
+      if(dh>5)w.push(`高度左中右相差 ${dh} mm，開口不正，已取最小值`);}
+    if(+p.W<200||+p.H<200)w.push(`尺寸偏小，請確認單位（目前為 ${unit}）`);
+    if(+p.W>8000||+p.H>6000)w.push(`尺寸偏大，請確認單位（目前為 ${unit}）`);
+  }
+  return w;
+}
+const qtyUnit=it=>it.type==='canopy'?'組':'樘';
+function sizeText(it){const p=it.p;if(it.type==='canopy'){const M=canopyModel(p);return `${fmtLen(M.Lx)} × ${fmtLen(M.y1)}`}return it.type==='canopy'?'':`${fmtLen(p.W)} × ${fmtLen(p.H)}`}
+function amountText(it){const m=metrics(it);return m.canopy?`${m.m2.toFixed(2)} m²`:`${m.cai.toFixed(1)} 才`}
+function totals(p){let cai=0,m2=0;for(const it of p.items){const m=metrics(it);if(m.canopy)m2+=m.m2;else cai+=m.cai}return {cai,m2}}
+const hasPrices=()=>Object.values(settings.prices).some(v=>+v>0);
+function itemQuote(it){const pr=+(settings.prices[it.type]||0),m=metrics(it);
+  if(m.canopy){const u=m.one/3.3058;return {u:'坪',each:u,q:u*it.qty,price:pr,amt:Math.round(u*it.qty*pr)}}
+  const c=Math.max(m.one,+settings.minCai||0);return {u:'才',each:c,q:c*it.qty,price:pr,amt:Math.round(c*it.qty*pr)}}
+function quoteTotals(p){let sub=0;for(const it of p.items)sub+=itemQuote(it).amt;sub+=(+p.extra||0);
+  const tax=settings.tax?Math.round(sub*0.05):0;return {sub,tax,total:sub+tax}}
+function specText(it){const p=it.p,t=TYPES[it.type].n;
+  if(it.type==='canopy'){const M=canopyModel(p);return `${t}（${p.shape}）${fmtLen(M.Lx)}×${fmtLen(M.y1)} 後高${fmtLen(M.Hb)} 前高${fmtLen(M.Hf)} ${p.panel} ${p.frame}${M.enc.length?' 含封邊':''}`}
+  const ex=it.type==='slide'?`${p.panels}扇`:it.type==='fixed'?`${p.cols}×${p.rows}分割`:it.type==='casement'?`${p.sash}扇${p.dir}`:it.type==='louver'?`${p.cols}分割`:p.style;
+  return `${t} ${fmtLen(p.W)}×${fmtLen(p.H)} ${ex}${p.series?' '+p.series:''}${p.glass?' '+p.glass:''} ${p.color}${p.screen?' 附紗窗':''}`;
+}
+/* ================= 圖面引擎（一份幾何，同時輸出 SVG / DXF） ================= */
+const FONT="'PingFang TC','Heiti TC','Noto Sans TC',sans-serif";
+const FILL={sash:'#F4F6F8',glass:'#E3F0F7',wall:'#CBD2D9',ink:'#1B2430',white:'#FFFFFF',hatch:'#FCEFC2',hole:'#FDE2E2'};
+const LS={FRAME:{s:'#1B2430',w:1,c:7},SASH:{s:'#1B2430',w:1,c:7},GLASS:{s:'#1B2430',w:.7,c:4},
+  HIDDEN:{s:'#6B7785',w:1,dash:1,c:8},DIM:{s:'#0B7285',w:.75,c:3},TEXT:{s:'#1B2430',w:1,c:7},
+  NOTE:{s:'#6B7785',w:1,c:8},WALL:{s:'#6B7785',w:.6,c:8},GRID:{s:'#5D6B7A',w:.6,c:8},GROUND:{s:'#6B7785',w:1.2,c:8},TITLE:{s:'#1B2430',w:1,c:7},OBS:{s:'#C0392B',w:1,c:1},GUTTER:{s:'#2B6CB0',w:2.2,c:5}};
+const tw=(s,size)=>{let w=0;for(const ch of String(s))w+=ch.charCodeAt(0)<128?0.56:1;return w*size};
+
+class Dw{
+  constructor(k){this.k=k;this.p=[]}
+  line(x1,y1,x2,y2,L,sw){this.p.push({t:'l',x1,y1,x2,y2,L:L||'FRAME',sw:sw||1})}
+  rect(x,y,w,h,L,fill,sw){this.p.push({t:'r',x,y,w:Math.max(w,0),h:Math.max(h,0),L:L||'FRAME',fill:fill||null,sw:sw||1})}
+  poly(pts,L,fill,close,sw,tag){this.p.push({t:'p',pts,L:L||'FRAME',fill:fill||null,close:close!==false,sw:sw||1,tag:tag||''})}
+  circle(cx,cy,r,L,fill){this.p.push({t:'c',cx,cy,r,L:L||'FRAME',fill:fill||null})}
+  text(x,y,s,size,L,anchor,rot,bold){this.p.push({t:'t',x,y,s:String(s),size,L:L||'TEXT',anchor:anchor||'middle',rot:rot||0,bold:!!bold})}
+  arrow(x1,y1,x2,y2){const h=this.k*0.024,a=Math.atan2(y2-y1,x2-x1);this.line(x1,y1,x2,y2,'TEXT',1.2);
+    this.poly([[x2-h*Math.cos(a-0.45),y2-h*Math.sin(a-0.45)],[x2,y2],[x2-h*Math.cos(a+0.45),y2-h*Math.sin(a+0.45)]],'TEXT',null,false,1.2)}
+  dimH(x1,x2,y,yRef,txt){const k=this.k,t=k*0.01,fs=k*0.036,d=Math.sign(y-yRef)||1,g=k*0.012;
+    this.line(x1,yRef+d*g,x1,y+d*t,'DIM');this.line(x2,yRef+d*g,x2,y+d*t,'DIM');this.line(x1,y,x2,y,'DIM');
+    this.line(x1-t,y+t,x1+t,y-t,'DIM',2);this.line(x2-t,y+t,x2+t,y-t,'DIM',2);
+    if(txt!=='')this.text((x1+x2)/2,y-fs*0.3,txt,fs,'DIM')}
+  dimV(y1,y2,x,xRef,txt){const k=this.k,t=k*0.01,fs=k*0.036,d=Math.sign(x-xRef)||1,g=k*0.012;
+    this.line(xRef+d*g,y1,x+d*t,y1,'DIM');this.line(xRef+d*g,y2,x+d*t,y2,'DIM');this.line(x,y1,x,y2,'DIM');
+    this.line(x-t,y1+t,x+t,y1-t,'DIM',2);this.line(x-t,y2+t,x+t,y2-t,'DIM',2);
+    if(txt!=='')this.text(x-fs*0.3,(y1+y2)/2,txt,fs,'DIM','middle',-90)}
+  bounds(pad){let a=Infinity,b=Infinity,c=-Infinity,e=-Infinity;const add=(x,y)=>{if(x<a)a=x;if(x>c)c=x;if(y<b)b=y;if(y>e)e=y};
+    for(const q of this.p){
+      if(q.t==='l'){add(q.x1,q.y1);add(q.x2,q.y2)}
+      else if(q.t==='r'){add(q.x,q.y);add(q.x+q.w,q.y+q.h)}
+      else if(q.t==='p'){for(const [x,y] of q.pts)add(x,y)}
+      else if(q.t==='c'){add(q.cx-q.r,q.cy-q.r);add(q.cx+q.r,q.cy+q.r)}
+      else if(q.t==='t'){const w=tw(q.s,q.size),h=q.size,x0=q.anchor==='start'?0:q.anchor==='end'?-w:-w/2;
+        const r=(q.rot||0)*Math.PI/180,c=Math.cos(r),sn=Math.sin(r);for(const [lx,ly] of [[x0,-h],[x0+w,-h],[x0,h*0.25],[x0+w,h*0.25]])add(q.x+lx*c-ly*sn,q.y+lx*sn+ly*c)}
+    }
+    const pd=pad==null?this.k*0.04:pad;return {x:a-pd,y:b-pd,w:c-a+2*pd,h:e-b+2*pd}}
+}
+
+/* ---------- 門窗 ---------- */
+function bWin(it){
+  const p=it.p,W=Math.max(+p.W||0,50),H=Math.max(+p.H||0,50),k=Math.max(W,H),d=new Dw(k);
+  const f=k*0.028,fs=k*0.034;
+  const glass=(x,y,w,h)=>d.rect(x,y,w,h,'GLASS','glass',0.7);
+  const vee=(x,y,w,h,dir)=>{if(dir==='left'){d.line(x+w,y,x,y+h/2,'HIDDEN');d.line(x+w,y+h,x,y+h/2,'HIDDEN')}
+    else if(dir==='right'){d.line(x,y,x+w,y+h/2,'HIDDEN');d.line(x,y+h,x+w,y+h/2,'HIDDEN')}
+    else{d.line(x,y+h,x+w/2,y,'HIDDEN');d.line(x+w,y+h,x+w/2,y,'HIDDEN')}};
+  d.rect(0,0,W,H,'FRAME','sash',1.4);
+  const ix=f,iy=f,iw=W-2*f,ih=H-2*f;let cB=null,cL=null;
+  if(it.type==='slide'){const n=+p.panels||2,pw=iw/n;
+    for(let i=0;i<n;i++){const x=ix+i*pw;d.rect(x,iy,pw,ih,'SASH','sash');glass(x+f*0.7,iy+f*0.7,pw-f*1.4,ih-f*1.4);
+      const cx=x+pw/2,s=i<n/2?1:-1;d.arrow(cx-s*pw*0.18,iy+ih/2,cx+s*pw*0.18,iy+ih/2)}}
+  else if(it.type==='fixed'){const cols=+p.cols||1,rows=+p.rows||1,m=f*0.7,cw=(iw-(cols-1)*m)/cols,ch=(ih-(rows-1)*m)/rows;
+    d.rect(ix,iy,iw,ih,'SASH','sash',0.7);
+    for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){const x=ix+c*(cw+m),y=iy+r*(ch+m);glass(x,y,cw,ch);
+      if(cols*rows<=9)d.text(x+cw/2,y+ch/2+fs*0.35,'固定',fs,'NOTE')}
+    if(cols>1)cB=Array(cols).fill(W/cols);if(rows>1)cL=Array(rows).fill(H/rows)}
+  else if(it.type==='casement'){const n=+p.sash||1,m=f*0.7,w=(iw-(n-1)*m)/n;
+    d.rect(ix,iy,iw,ih,'SASH','sash',0.7);
+    for(let i=0;i<n;i++){const x=ix+i*(w+m);d.rect(x,iy,w,ih,'SASH','sash');glass(x+f*0.6,iy+f*0.6,w-f*1.2,ih-f*1.2);
+      vee(x,iy,w,ih,p.dir==='左側推'?'left':p.dir==='右側推'?'right':'top')}
+    if(n>1)cB=Array(n).fill(W/n)}
+  else if(it.type==='louver'){const cols=+p.cols||1,m=f*0.7,cw=(iw-(cols-1)*m)/cols,n=Math.max(4,Math.round(ih/90));
+    d.rect(ix,iy,iw,ih,'SASH','sash',0.7);
+    for(let c=0;c<cols;c++){const x=ix+c*(cw+m);d.rect(x,iy,cw,ih,'SASH','white');
+      for(let j=1;j<n;j++){const y=iy+ih*j/n;d.line(x+f*0.3,y,x+cw-f*0.3,y-ih/n*0.35,'GRID',1.2)}}
+    d.text(W/2,H+fs*1.4,'鋁百葉',fs,'NOTE');
+    if(cols>1)cB=Array(cols).fill(W/cols)}
+  else if(it.type==='door'){const t=Math.min(+p.transom||0,H*0.6);let dy=iy,dh=ih;
+    if(t>0){glass(ix,iy,iw,t-f*1.35);d.rect(ix,iy+t-f*1.35,iw,f*0.7,'SASH','sash');dy=iy+t-f*0.65;dh=ih-(t-f*0.65);cL=[t,H-t]}
+    const leaf=(x,w,hl)=>{d.rect(x,dy,w,dh,'SASH','sash');glass(x+f*0.8,dy+f*0.8,w-f*1.6,dh*0.6);
+      d.circle(hl?x+w-f*1.4:x+f*1.4,dy+dh*0.55,k*0.012,'TEXT','ink');vee(x,dy,w,dh,hl?'left':'right')};
+    if(p.style==='雙開'){leaf(ix,iw/2,true);leaf(ix+iw/2,iw/2,false)}
+    else if(p.style==='橫拉門'){for(let i=0;i<2;i++){const x=ix+i*iw/2;d.rect(x,dy,iw/2,dh,'SASH','sash');glass(x+f*0.7,dy+f*0.7,iw/2-f*1.4,dh-f*1.4);
+      const cx=x+iw/4,s=i===0?1:-1;d.arrow(cx-s*iw*0.09,dy+dh/2,cx+s*iw*0.09,dy+dh/2)}}
+    else leaf(ix,iw,p.hinge!=='右');
+    d.line(-k*0.06,H,W+k*0.06,H,'GROUND')}
+  let yb=H+k*0.08+(it.type==='louver'?fs*1.2:0);
+  if(cB){let x=0;for(const s of cB){d.dimH(x,x+s,yb,H,fmtLen(s));x+=s}yb+=k*0.08}
+  d.dimH(0,W,yb,H,fmtLen(W));
+  d.dimV(0,H,W+k*0.08,W,fmtLen(H));
+  if(cL){let y=0;for(const s of cL){d.dimV(y,y+s,-k*0.08,0,fmtLen(s));y+=s}}
+  return d;
+}
+
+const build=it=>it.type==='canopy'?bCanopy(it):bWin(it);
+
+/* ---------- SVG 輸出 ---------- */
+function toSVG(d,pw,ph){
+  const b=d.bounds(),k=d.k,base=k*0.004,dash=` stroke-dasharray="${r1(k*0.02)} ${r1(k*0.012)}"`;let o='';
+  for(const q of d.p){const st=LS[q.L]||LS.FRAME,sw=r1(base*st.w*(q.sw||1)),stroke=st.s,ds=st.dash?dash:'';
+    if(q.t==='l')o+=`<line x1="${r1(q.x1)}" y1="${r1(q.y1)}" x2="${r1(q.x2)}" y2="${r1(q.y2)}" stroke="${stroke}" stroke-width="${sw}"${ds}/>`;
+    else if(q.t==='r')o+=`<rect x="${r1(q.x)}" y="${r1(q.y)}" width="${r1(q.w)}" height="${r1(q.h)}" fill="${q.fill?FILL[q.fill]:'none'}" stroke="${stroke}" stroke-width="${sw}"${ds}/>`;
+    else if(q.t==='p')o+=`<${q.close?'polygon':'polyline'} points="${q.pts.map(([x,y])=>r1(x)+','+r1(y)).join(' ')}" fill="${q.fill?FILL[q.fill]:'none'}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round"${ds}${q.tag?` data-cell="${q.tag}"`:''}/>`;
+    else if(q.t==='c')o+=`<circle cx="${r1(q.cx)}" cy="${r1(q.cy)}" r="${r1(q.r)}" fill="${q.fill?FILL[q.fill]:'none'}" stroke="${stroke}" stroke-width="${sw}"/>`;
+    else if(q.t==='t'){const a=`font-size="${r1(q.size)}" fill="${stroke}" text-anchor="${q.anchor}" font-family="${FONT}"${q.bold?' font-weight="700"':''}`;
+      o+=q.rot?`<text transform="translate(${r1(q.x)} ${r1(q.y)}) rotate(${q.rot})" ${a}>${esc(q.s)}</text>`:`<text x="${r1(q.x)}" y="${r1(q.y)}" ${a}>${esc(q.s)}</text>`}
+  }
+  const size=pw?`width="${pw}" height="${ph}"`:'';
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r1(b.x)} ${r1(b.y)} ${r1(b.w)} ${r1(b.h)}" ${size} preserveAspectRatio="xMidYMid meet"><rect x="${r1(b.x)}" y="${r1(b.y)}" width="${r1(b.w)}" height="${r1(b.h)}" fill="#fff"/>${o}</svg>`;
+}
+const drawItem=it=>toSVG(build(it));
+
+/* ---------- 圖框 + 標題欄（DXF 用） ---------- */
+function addSheet(d,info){
+  const b=d.bounds(d.k*0.06),k=d.k,tbH=k*0.22,W=b.w,x0=b.x,y0=b.y,ty=b.y+b.h,s=tbH*0.13;
+  d.rect(x0,y0,W,b.h+tbH,'TITLE',null,1.6);d.line(x0,ty,x0+W,ty,'TITLE',1.2);
+  const c1=x0+W*0.38,c2=x0+W*0.7;d.line(c1,ty,c1,ty+tbH,'TITLE');d.line(c2,ty,c2,ty+tbH,'TITLE');
+  const pad=W*0.015,row=i=>ty+tbH*(0.26+0.22*i);
+  d.text(x0+pad,row(0),info.co.name||'（公司名稱）',s*1.35,'TITLE','start',0,true);
+  d.text(x0+pad,row(1),[info.co.phone&&'電話 '+info.co.phone,info.co.taxid&&'統編 '+info.co.taxid].filter(Boolean).join('  '),s,'TITLE','start');
+  d.text(x0+pad,row(2),info.co.addr||'',s,'TITLE','start');
+  d.text(c1+pad,row(0),'業主 '+(info.p.name||''),s,'TITLE','start');
+  d.text(c1+pad,row(1),'電話 '+(info.p.phone||''),s,'TITLE','start');
+  d.text(c1+pad,row(2),'地址 '+(info.p.addr||''),s,'TITLE','start');
+  d.text(c2+pad,row(0),info.title,s*1.2,'TITLE','start',0,true);
+  d.text(c2+pad,row(1),`日期 ${info.p.date||''}  單位 mm`,s,'TITLE','start');
+  d.text(c2+pad,row(2),`圖號 ${info.no}  丈量 ${info.co.staff||''}`,s,'TITLE','start');
+}
+
+/* ---------- DXF（R12 ASCII，中文用 \U+ 編碼） ---------- */
+function dxfStr(s){return String(s).replace(/[^\x20-\x7e]/g,c=>{const cp=c.codePointAt(0);return cp>0xffff?'?':'\\U+'+cp.toString(16).toUpperCase().padStart(4,'0')})}
+function toDXF(d){
+  const o=[],g=(c,v)=>{const n=+c,isInt=(n>=60&&n<=99)||(n>=170&&n<=179)||(n>=270&&n<=289);o.push(String(c),typeof v==='number'?(isInt?String(Math.round(v)):v.toFixed(3)):String(v))},Y=y=>-y,b=d.bounds(0);
+  g(0,'SECTION');g(2,'HEADER');g(9,'$ACADVER');g(1,'AC1009');g(9,'$INSUNITS');g(70,4);
+  g(9,'$EXTMIN');g(10,b.x);g(20,Y(b.y+b.h));g(9,'$EXTMAX');g(10,b.x+b.w);g(20,Y(b.y));g(0,'ENDSEC');
+  g(0,'SECTION');g(2,'TABLES');
+  g(0,'TABLE');g(2,'LTYPE');g(70,2);
+  g(0,'LTYPE');g(2,'CONTINUOUS');g(70,0);g(3,'Solid line');g(72,65);g(73,0);g(40,0);
+  const dl=Math.max(20,d.k*0.02),gl=Math.max(10,d.k*0.012);
+  g(0,'LTYPE');g(2,'DASHED');g(70,0);g(3,'__ __ __');g(72,65);g(73,2);g(40,dl+gl);g(49,dl);g(49,-gl);
+  g(0,'ENDTAB');
+  const layers=Object.keys(LS);g(0,'TABLE');g(2,'LAYER');g(70,layers.length);
+  for(const n of layers){g(0,'LAYER');g(2,n);g(70,0);g(62,LS[n].c);g(6,LS[n].dash?'DASHED':'CONTINUOUS')}
+  g(0,'ENDTAB');
+  g(0,'TABLE');g(2,'STYLE');g(70,1);g(0,'STYLE');g(2,'CJK');g(70,0);g(40,0);g(41,1);g(50,0);g(71,0);g(42,2.5);g(3,'txt');g(4,'chineset.shx');g(0,'ENDTAB');
+  g(0,'ENDSEC');
+  g(0,'SECTION');g(2,'ENTITIES');
+  const line=(x1,y1,x2,y2,L)=>{g(0,'LINE');g(8,L);g(10,x1);g(20,Y(y1));g(30,0);g(11,x2);g(21,Y(y2));g(31,0)};
+  for(const q of d.p){
+    if(q.t==='l')line(q.x1,q.y1,q.x2,q.y2,q.L);
+    else if(q.t==='r'){const {x,y,w,h}=q;line(x,y,x+w,y,q.L);line(x+w,y,x+w,y+h,q.L);line(x+w,y+h,x,y+h,q.L);line(x,y+h,x,y,q.L)}
+    else if(q.t==='p'){for(let i=0;i<q.pts.length-1;i++)line(...q.pts[i],...q.pts[i+1],q.L);if(q.close&&q.pts.length>2)line(...q.pts[q.pts.length-1],...q.pts[0],q.L)}
+    else if(q.t==='c'){g(0,'CIRCLE');g(8,q.L);g(10,q.cx);g(20,Y(q.cy));g(30,0);g(40,q.r)}
+    else if(q.t==='t'&&q.s){const j=q.anchor==='start'?0:q.anchor==='end'?2:1;
+      g(0,'TEXT');g(8,q.L);g(7,'CJK');g(10,q.x);g(20,Y(q.y));g(30,0);g(40,q.size);g(1,dxfStr(q.s));
+      if(q.rot)g(50,-q.rot);if(j){g(72,j);g(11,q.x);g(21,Y(q.y));g(31,0)}}
+  }
+  g(0,'ENDSEC');g(0,'EOF');
+  return o.join('\r\n')+'\r\n';
+}
+
+/* ---------- ZIP（不壓縮，給 DXF 打包） ---------- */
+const CRC_T=(()=>{const t=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?0xEDB88320^(c>>>1):c>>>1;t[n]=c>>>0}return t})();
+function crc32(u){let c=0xFFFFFFFF;for(let i=0;i<u.length;i++)c=CRC_T[(c^u[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0}
+function makeZip(files){
+  const enc=new TextEncoder(),parts=[],cen=[];let off=0;
+  for(const f of files){const nm=enc.encode(f.name),data=typeof f.data==='string'?enc.encode(f.data):f.data,crc=crc32(data),sz=data.length;
+    const lh=new DataView(new ArrayBuffer(30));lh.setUint32(0,0x04034b50,true);lh.setUint16(4,20,true);lh.setUint16(6,0x0800,true);
+    lh.setUint16(12,0x21,true);lh.setUint32(14,crc,true);lh.setUint32(18,sz,true);lh.setUint32(22,sz,true);lh.setUint16(26,nm.length,true);
+    parts.push(new Uint8Array(lh.buffer),nm,data);
+    const ch=new DataView(new ArrayBuffer(46));ch.setUint32(0,0x02014b50,true);ch.setUint16(4,20,true);ch.setUint16(6,20,true);ch.setUint16(8,0x0800,true);
+    ch.setUint16(14,0x21,true);ch.setUint32(16,crc,true);ch.setUint32(20,sz,true);ch.setUint32(24,sz,true);ch.setUint16(28,nm.length,true);ch.setUint32(42,off,true);
+    cen.push(new Uint8Array(ch.buffer),nm);off+=30+nm.length+sz}
+  const cs=cen.reduce((a,b)=>a+b.length,0),end=new DataView(new ArrayBuffer(22));
+  end.setUint32(0,0x06054b50,true);end.setUint16(8,files.length,true);end.setUint16(10,files.length,true);end.setUint32(12,cs,true);end.setUint32(16,off,true);
+  return new Blob([...parts,...cen,new Uint8Array(end.buffer)],{type:'application/zip'});
+}
+/* ================= 採光罩 v3：不規則外形、障礙物、手動微調、封邊、出簷排水 ================= */
+const ENC=['無','固定玻璃','橫拉窗','百葉','隔柵','實牆'];
+const OBS=[
+  {n:'冷氣排水管',k:'pipe',w:25,m:0},{n:'自來水管',k:'pipe',w:25,m:0},{n:'糞管透氣管（T彎頭）',k:'pipe',w:100,m:0},
+  {n:'排油煙管',k:'pipe',w:150,m:0},{n:'瓦斯管',k:'pipe',w:25,m:0},
+  {n:'樓梯口',k:'area',w:1000,d:2000,m:3},{n:'維修孔／檢修口',k:'area',w:600,d:600,m:3},{n:'其他（地面）',k:'area',w:500,d:500,m:3},
+  {n:'冷氣室外機',k:'wall',w:800,d:600,h:2200,m:3},{n:'窗戶／雨遮',k:'wall',w:1200,d:1200,h:1800,m:3},{n:'電錶／瓦斯錶',k:'wall',w:500,d:600,h:1500,m:3}];
+const OBS_MODE=['開孔穿過（加防水套管）','挖空不蓋','上方避開','只標示'];
+const obsType=n=>OBS.find(t=>t.n===n)||OBS[7];
+Object.assign(FIELDS,{
+  shape:{l:'外形',t:'sel',o:['矩形','缺角','斜邊','自訂']},
+  nc:{l:'缺角位置',t:'sel',o:['右前','左前','右後（牆側凸出）','左後（牆側凸出）']},
+  nw:{l:'缺角寬',t:'len'},nd:{l:'缺角深',t:'len'},
+  Dr:{l:'深（右側）',t:'len'},oL:{l:'前緣左側內縮',t:'len'},oR:{l:'前緣右側內縮',t:'len'},
+  hlr:{l:'左右高度不同（地面或牆面不平）',t:'bool'},HbR:{l:'後高（右）',t:'len'},HfR:{l:'前高（右）',t:'len'},
+  diag1:{l:'對角線 1',t:'len',hint:'0 = 未量'},diag2:{l:'對角線 2',t:'len',hint:'0 = 未量'},
+  postMode:{l:'立柱',t:'sel',o:['自動','掛壁式（無柱）','自訂位置']},postGap:{l:'最大柱距',t:'len'},
+  rs:{l:'自訂骨架間距',t:'list',hint:'空白 = 平均'},ps:{l:'自訂橫料間距（沿斜面）',t:'list',hint:'空白 = 平均'},
+  ovF:{l:'前出簷',t:'len',hint:'板材超出前樑'},ovS:{l:'側出簷',t:'len'},
+  gutter:{l:'前簷排水溝',t:'bool'},dp:{l:'落水頭',t:'sel',o:['右側','左側','兩側','中間']},
+  encF:{l:'前面封邊',t:'sel',o:ENC},encL:{l:'左側封邊',t:'sel',o:ENC},encR:{l:'右側封邊',t:'sel',o:ENC},
+  heater:{l:'封閉範圍內有燃氣熱水器',t:'bool'}
+});
+TYPES.canopy={n:'採光罩',
+  f:['shape','L','D','nc','nw','nd','Dr','oL','oR','Hb','Hf','hlr','HbR','HfR','diag1','diag2','postMode','postGap','spacing','pspacing','rs','ps','frame','panel','color','ovF','ovS','drain','gutter','dp','encF','encL','encR','heater'],
+  d:{shape:'矩形',L:5000,D:2000,nc:'右前',nw:1000,nd:800,Dr:2000,oL:0,oR:0,Hb:3000,Hf:2600,hlr:false,HbR:3000,HfR:2600,diag1:0,diag2:0,
+    postMode:'自動',postGap:3000,spacing:600,pspacing:1000,rs:[],ps:[],ovF:100,ovS:0,gutter:true,dp:'右側',encF:'無',encL:'無',encR:'無',heater:false,
+    pts:null,wallE:[],posts:[],obs:[],marks:{}}};
+const CANOPY_GROUPS=[['外形',['shape','L','D','nc','nw','nd','Dr','oL','oR']],['高度與現場量測',['Hb','Hf','hlr','HbR','HfR','diag1','diag2']],
+  ['骨架與立柱',['postMode','postGap','spacing','pspacing','rs','ps','frame']],['屋面與出簷',['panel','color','ovF','ovS']],
+  ['排水',['drain','gutter','dp']],['封邊（全罩）',['encF','encL','encR','heater']]];
+const RERENDER=new Set(['style','tri','shape','hlr','postMode','gutter','encF','encL','encR','nc']);
+function canopyVisible(p){const s=new Set(['shape','Hb','Hf','hlr','postMode','spacing','pspacing','rs','ps','frame','panel','color','ovF','ovS','drain','gutter','encF','encL','encR']);
+  if(p.shape!=='自訂'){s.add('L');s.add('D')}
+  if(p.shape==='缺角'){s.add('nc');s.add('nw');s.add('nd')}
+  if(p.shape==='斜邊'){s.add('Dr');s.add('oL');s.add('oR')}
+  if(p.shape==='矩形'){s.add('diag1');s.add('diag2')}
+  if(p.hlr){s.add('HbR');s.add('HfR')}
+  if(p.postMode==='自動')s.add('postGap');
+  if(p.gutter)s.add('dp');
+  if([p.encF,p.encL,p.encR].some(e=>e&&e!=='無'))s.add('heater');
+  return s}
+function canopyLabels(p){const l={};if(p.shape==='斜邊')l.D='深（左側）';if(p.hlr){l.Hb='後高（左）';l.Hf='前高（左）'}return l}
+
+/* ---------- 幾何工具 ---------- */
+function polyArea(P){let a=0;for(let i=0;i<P.length;i++){const p=P[i],q=P[(i+1)%P.length];a+=p[0]*q[1]-q[0]*p[1]}return a/2}
+function bbox(P){let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(const [x,y] of P){if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y}return {x0,y0,x1,y1}}
+function clipRect(poly,x1,y1,x2,y2){
+  const cl=(P,inside,inter)=>{const o=[];for(let i=0;i<P.length;i++){const a=P[i],b=P[(i+1)%P.length],ia=inside(a),ib=inside(b);
+    if(ia){o.push(a);if(!ib)o.push(inter(a,b))}else if(ib)o.push(inter(a,b))}return o};
+  const X=(a,b,x)=>[x,a[1]+(b[1]-a[1])*(x-a[0])/(b[0]-a[0])],Y=(a,b,y)=>[a[0]+(b[0]-a[0])*(y-a[1])/(b[1]-a[1]),y];
+  let r=cl(poly,p=>p[0]>=x1,(a,b)=>X(a,b,x1));
+  if(r.length)r=cl(r,p=>p[0]<=x2,(a,b)=>X(a,b,x2));
+  if(r.length)r=cl(r,p=>p[1]>=y1,(a,b)=>Y(a,b,y1));
+  if(r.length)r=cl(r,p=>p[1]<=y2,(a,b)=>Y(a,b,y2));
+  return r}
+function spans(P,axis,c){const v=[];for(let i=0;i<P.length;i++){const a=P[i],b=P[(i+1)%P.length];
+    const pa=axis==='x'?a[0]:a[1],qa=axis==='x'?a[1]:a[0],pb=axis==='x'?b[0]:b[1],qb=axis==='x'?b[1]:b[0];
+    if((pa<=c&&pb>c)||(pb<=c&&pa>c))v.push(qa+(qb-qa)*(c-pa)/(pb-pa))}
+  v.sort((a,b)=>a-b);const o=[];for(let i=0;i+1<v.length;i+=2)if(v[i+1]-v[i]>1)o.push([v[i],v[i+1]]);return o}
+function offsetPoly(P,E,offs){const n=P.length,L=E.map((e,i)=>({p:[e.a[0]+e.n[0]*offs[i],e.a[1]+e.n[1]*offs[i]],d:[e.b[0]-e.a[0],e.b[1]-e.a[1]]}));
+  return P.map((_,i)=>{const l1=L[(i-1+n)%n],l2=L[i],cr=l1.d[0]*l2.d[1]-l1.d[1]*l2.d[0];if(Math.abs(cr)<1e-9)return l2.p.slice();
+    const t=((l2.p[0]-l1.p[0])*l2.d[1]-(l2.p[1]-l1.p[1])*l2.d[0])/cr;return [l1.p[0]+l1.d[0]*t,l1.p[1]+l1.d[1]*t]})}
+function gridLines(a,b,step,custom){const W=b-a;if(W<=0)return [a,b];const out=[a];
+  if(Array.isArray(custom)&&custom.some(v=>v>0)){let s=a;for(const v of custom){if(!(v>0))continue;if(s+v>=b-1)break;s+=v;out.push(s)}
+    const rem=b-s;if(rem>1&&step>0){const n=Math.max(1,Math.ceil(rem/step-1e-6));for(let i=1;i<n;i++)out.push(s+rem*i/n)}out.push(b);return out}
+  const n=step>0?Math.max(1,Math.ceil(W/step-1e-6)):1;for(let i=1;i<n;i++)out.push(a+W*i/n);out.push(b);return out}
+const ovl=(r,b)=>r[0]<b.x1&&r[2]>b.x0&&r[1]<b.y1&&r[3]>b.y0;
+function selfIntersect(P){const n=P.length,cross=(a,b,c)=>(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+  for(let i=0;i<n;i++)for(let j=i+2;j<n;j++){if(i===0&&j===n-1)continue;const a=P[i],b=P[(i+1)%n],c=P[j],d=P[(j+1)%n];
+    if(cross(a,b,c)*cross(a,b,d)<0&&cross(c,d,a)*cross(c,d,b)<0)return true}return false}
+
+function presetPts(p){const L=Math.max(+p.L||0,100),D=Math.max(+p.D||0,100);
+  if(p.shape==='缺角'){const w=clamp(+p.nw||0,10,L-10),d=clamp(+p.nd||0,10,D-10),c=String(p.nc||'');
+    if(c.startsWith('左前'))return {pts:[[0,0],[L,0],[L,D],[w,D],[w,D-d],[0,D-d]],wallE:[]};
+    if(c.startsWith('右後'))return {pts:[[0,0],[L-w,0],[L-w,d],[L,d],[L,D],[0,D]],wallE:[1,2]};
+    if(c.startsWith('左後'))return {pts:[[w,0],[L,0],[L,D],[0,D],[0,d],[w,d]],wallE:[4,5]};
+    return {pts:[[0,0],[L,0],[L,D-d],[L-w,D-d],[L-w,D],[0,D]],wallE:[]}}
+  if(p.shape==='斜邊'){const Dr=Math.max(+p.Dr||0,100);return {pts:[[0,0],[L,0],[L-(+p.oR||0),Dr],[+p.oL||0,D]],wallE:[]}}
+  if(p.shape==='自訂'&&Array.isArray(p.pts)&&p.pts.length>=3)return {pts:p.pts.map(q=>[+q[0]||0,+q[1]||0]),wallE:Array.isArray(p.wallE)?p.wallE:[]};
+  return {pts:[[0,0],[L,0],[L,D],[0,D]],wallE:[]}}
+
+/* ---------- 模型（所有圖面、3D、材料、報價共用） ---------- */
+let _cm={k:'',v:null};
+function canopyModel(p){const key=JSON.stringify(p);if(_cm.k===key)return _cm.v;const v=calcCanopy(p);_cm={k:key,v};return v}
+function calcCanopy(p){
+  const pre=presetPts(p),pts=pre.pts,A=polyArea(pts),sg=A>=0?1:-1,wallSet=new Set(pre.wallE);
+  const E=pts.map((a,i)=>{const b=pts[(i+1)%pts.length],dx=b[0]-a[0],dy=b[1]-a[1],len=Math.hypot(dx,dy)||1,n=[sg*dy/len,-sg*dx/len];
+    const wall=wallSet.has(i)||(Math.abs(a[1])<1&&Math.abs(b[1])<1);
+    return {i,a,b,n,len,kind:wall?'wall':n[1]>0.5?'front':n[0]<-0.5?'left':n[0]>0.5?'right':'back'}});
+  const sb=bbox(pts),x0=sb.x0,x1=sb.x1,y1=Math.max(sb.y1,1),Lx=Math.max(x1-x0,1),Dy=y1;
+  const Hb=+p.Hb||0,Hf=+p.Hf||0,HbR=p.hlr?(+p.HbR||0):Hb,HfR=p.hlr?(+p.HfR||0):Hf;
+  const H=(x,y)=>{const t=(x-x0)/Lx,b=Hb+(HbR-Hb)*t,f=Hf+(HfR-Hf)*t;return b+(f-b)*(y/Dy)};
+  const rise=((Hb+HbR)-(Hf+HfR))/2,sl=Math.hypot(Dy,rise),fac=sl/Dy,ang=Math.atan2(Math.abs(rise),Dy)*180/Math.PI;
+  const offs=E.map(e=>e.kind==='wall'?0:e.kind==='front'?(+p.ovF||0):(+p.ovS||0));
+  const panel=offsetPoly(pts,E,offs),pb=bbox(panel);
+  const xsR=gridLines(x0,x1,+p.spacing||0,p.rs);
+  const ysP=gridLines(0,y1,(+p.pspacing||0)/fac,(p.ps||[]).map(v=>v/fac));
+  const raf=[];for(const x of xsR){const c=clamp(x,x0+0.5,x1-0.5);for(const [ya,yb] of spans(pts,'x',c))raf.push({x,ya,yb})}
+  const pur=[];for(const y of ysP){const c=clamp(y,0.5,y1-0.5);for(const [xa,xb] of spans(pts,'y',c))pur.push({y,xa,xb})}
+  const X=[pb.x0,...xsR.slice(1,-1),pb.x1],Y=[Math.min(0,pb.y0),...ysP.slice(1,-1),pb.y1],marks=p.marks||{};
+  const cells=[];let no=0;
+  for(let r=0;r<Y.length-1;r++)for(let c=0;c<X.length-1;c++){
+    const poly=clipRect(panel,X[c],Y[r],X[c+1],Y[r+1]);if(poly.length<3)continue;
+    const a=Math.abs(polyArea(poly)),ra=(X[c+1]-X[c])*(Y[r+1]-Y[r]);if(a<ra*0.003)continue;
+    const key=c+','+r;cells.push({c,r,key,poly,area:a,full:a>ra*0.995,state:marks[key]||'',no:++no,w:X[c+1]-X[c],l:(Y[r+1]-Y[r])*fac,bb:bbox(poly),holes:[]})}
+  const obs=(p.obs||[]).map((o,i)=>{const T=obsType(o.type);let rect=null;
+    if(T.k==='pipe'){const r=Math.max(+o.w||T.w,10)/2;rect=[+o.x-r,+o.y-r,+o.x+r,+o.y+r]}
+    else if(T.k==='area')rect=[+o.x||0,+o.y||0,(+o.x||0)+(+o.w||0),(+o.y||0)+(+o.d||0)];
+    return {...o,i,no:i+1,k:T.k,rect}});
+  for(const o of obs)if(o.rect)for(const cl of cells)if(ovl(o.rect,cl.bb))cl.holes.push(o);
+  let planA=0;for(const cl of cells)if(cl.state!=='void')planA+=cl.area;
+  for(const o of obs)if(o.rect&&o.mode===OBS_MODE[1])planA-=Math.abs(polyArea(clipRect(panel,...o.rect)));
+  planA=Math.max(0,planA);
+  let posts=[];
+  if(p.postMode==='自訂位置')posts=(p.posts||[]).map(q=>[+q[0]||0,+q[1]||0]);
+  else if(p.postMode==='自動'){const gap=Math.max(+p.postGap||0,500);
+    pts.forEach((v,i)=>{const ep=E[(i-1+pts.length)%pts.length],en=E[i];if(ep.kind!=='wall'&&en.kind!=='wall')posts.push(v.slice())});
+    for(const e of E)if(e.kind==='front'&&e.len>gap){const n=Math.ceil(e.len/gap);for(let j=1;j<n;j++)posts.push([e.a[0]+(e.b[0]-e.a[0])*j/n,e.a[1]+(e.b[1]-e.a[1])*j/n])}}
+  const gut=[],dps=[];
+  if(p.gutter){E.forEach((e,i)=>{if(e.kind==='front')gut.push([panel[i],panel[(i+1)%panel.length]])});
+    if(gut.length){const v=gut.flat(),mn=v.reduce((a,b)=>b[0]<a[0]?b:a),mx=v.reduce((a,b)=>b[0]>a[0]?b:a);
+      if(p.dp==='左側')dps.push(mn);else if(p.dp==='兩側')dps.push(mn,mx);
+      else if(p.dp==='中間'){const g=gut.reduce((a,b)=>Math.hypot(b[1][0]-b[0][0],b[1][1]-b[0][1])>Math.hypot(a[1][0]-a[0][0],a[1][1]-a[0][1])?b:a);dps.push([(g[0][0]+g[1][0])/2,(g[0][1]+g[1][1])/2])}
+      else dps.push(mx)}}
+  const enc=[];for(const e of E){const t=e.kind==='front'?p.encF:e.kind==='left'?p.encL:e.kind==='right'?p.encR:null;if(t&&t!=='無')enc.push({e,t})}
+  const live=cells.filter(c=>c.state!=='void');
+  return {pts,E,panel,pb,x0,x1,y1,Lx,Dy,H,Hb,Hf,HbR,HfR,sl,fac,ang,xsR,ysP,raf,pur,X,Y,cells,live,obs,posts,gut,dps,enc,planA,
+    m2:planA*fac/1e6,area:A,self:selfIntersect(pts)};
+}
+function canopyMetrics(it){const M=canopyModel(it.p),q=it.qty||1,one=M.m2;
+  return {canopy:true,sl:M.sl,ang:M.ang,one,m2:one*q,ping:one*q/3.3058,nR:M.xsR.length,nP:M.ysP.length,cols:M.X.length-1,rows:M.Y.length-1,
+    cells:M.live.length,full:M.live.filter(c=>c.full).length,cut:M.live.filter(c=>!c.full).length,
+    holes:M.obs.filter(o=>o.mode===OBS_MODE[0]).length,cellW:M.Lx/(M.xsR.length-1),cellL:M.sl/(M.ysP.length-1)}}
+function canopyWarnings(it){const p=it.p,M=canopyModel(p),w=[];
+  if(M.pts.length<3||Math.abs(M.area)<1e4)w.push('外形點數不足或面積為 0，請檢查座標');
+  if(M.self)w.push('外形的邊互相交叉，請檢查座標順序（要沿外圍依序輸入）');
+  if(M.Hf>M.Hb||M.HfR>M.HbR)w.push('前高高於後高，雨水會流向牆面，請確認');
+  else if(M.ang<3)w.push('斜度偏小，雨水容易積留，請確認');
+  if(Math.min(M.Hf,M.HfR)<2000)w.push(`前高低於 ${fmtLen(2000)} ${unit}，出入可能撞頭`);
+  if(p.shape==='矩形'&&+p.diag1>0&&+p.diag2>0){const dd=Math.abs(p.diag1-p.diag2);if(dd>10)w.push(`對角線相差 ${dd} mm，現場不方正，建議改用「自訂」外形照實際點位輸入`)}
+  if(p.postMode!=='自訂位置'&&p.postMode!=='自動'&&M.Dy>1500)w.push(`掛壁式出挑 ${fmtLen(M.Dy)} ${unit}，請確認壁面強度與斜撐`);
+  if(p.postMode!=='掛壁式（無柱）'){for(const e of M.E){if(e.kind!=='front')continue;
+    const ts=M.posts.map(q=>{const t=((q[0]-e.a[0])*(e.b[0]-e.a[0])+(q[1]-e.a[1])*(e.b[1]-e.a[1]))/(e.len*e.len);
+      const px=e.a[0]+(e.b[0]-e.a[0])*t,py=e.a[1]+(e.b[1]-e.a[1])*t;return Math.hypot(q[0]-px,q[1]-py)<80&&t>-0.02&&t<1.02?clamp(t,0,1):null}).filter(t=>t!==null).sort((a,b)=>a-b);
+    const pre=M.E[(e.i-1+M.E.length)%M.E.length],nxt=M.E[(e.i+1)%M.E.length];
+    if(pre.kind==='wall')ts.unshift(0);if(nxt.kind==='wall')ts.push(1);
+    if(ts.length<2){w.push(`有一段前樑（${fmtLen(e.len)} ${unit}）沒有立柱支撐`);continue}
+    let g=0;for(let i=1;i<ts.length;i++)g=Math.max(g,(ts[i]-ts[i-1])*e.len);if(g>3500)w.push(`前樑跨距約 ${fmtLen(g)} ${unit}，請確認樑的規格或加柱`)}}
+  if(/玻璃/.test(p.panel)&&+p.ovF>150)w.push('玻璃出簷較長，請與玻璃廠確認厚度與支撐方式');
+  if(!p.gutter&&!(+p.ovF>=50))w.push('沒有排水溝也沒有出簷，雨水會沿前樑流下');
+  if(M.enc.length&&p.heater)w.push('封閉範圍內有燃氣熱水器：須移到室外或改強制排氣型，否則有一氧化碳中毒風險');
+  if(['encF','encL','encR'].every(k=>p[k]&&p[k]!=='無'))w.push('三面全罩：請預留通風窗與逃生開口');
+  for(const o of M.obs){const T=obsType(o.type);
+    if(T.k==='wall'){const top=(+o.h||0)+(+o.d||0),line=Math.max(M.Hb,M.HbR);if(+o.h<line+150&&top>line-250)w.push(`#${o.no} ${o.type}與壁面固定線高度重疊，請調整後高或避開`)}
+    else if(o.type==='樓梯口'){const h=M.H((o.rect[0]+o.rect[2])/2,(o.rect[1]+o.rect[3])/2);if(h<2100)w.push(`#${o.no} 樓梯口上方淨高約 ${fmtLen(h)} ${unit}，請確認`)}
+    if(o.rect&&o.k!=='wall'){const cx=(o.rect[0]+o.rect[2])/2,cy=(o.rect[1]+o.rect[3])/2;if(cx<M.pb.x0||cx>M.pb.x1||cy<0||cy>M.pb.y1)w.push(`#${o.no} ${o.type}位置在採光罩範圍外`)}}
+  const holes=M.obs.filter(o=>o.mode===OBS_MODE[0]).length;if(holes)w.push(`需開孔 ${holes} 處，請備防水套管與收邊`);
+  return w}
+
+/* ---------- 材料明細 ---------- */
+function groupLens(arr,fmt){const m=new Map();for(const v of arr){const k=Math.round(v/10)*10;m.set(k,(m.get(k)||0)+1)}
+  return [...m.entries()].sort((a,b)=>b[0]-a[0]).map(([l,n])=>`${fmt?fmt(l):fmtLen(l)} ×${n}`).join('、')||'—'}
+function canopyBOM(it){const p=it.p,M=canopyModel(p),rows=[],q=it.qty||1;
+  const dHdy=x=>(M.H(x,M.Dy)-M.H(x,0))/M.Dy,dHdx=y=>(M.H(M.x1,y)-M.H(M.x0,y))/M.Lx;
+  rows.push(['骨架（沿斜面）',groupLens(M.raf.map(s=>(s.yb-s.ya)*Math.hypot(1,dHdy(s.x))))+` 支（單位 ${unit}）`]);
+  rows.push(['橫料',groupLens(M.pur.map(s=>(s.xb-s.xa)*Math.hypot(1,dHdx(s.y))))+' 支']);
+  const sum=k=>M.E.filter(e=>k.includes(e.kind)).reduce((a,e)=>a+e.len,0);
+  rows.push(['前樑',`${fmtLen(sum(['front']))} ${unit}`],['側樑',`${fmtLen(sum(['left','right','back']))} ${unit}`],['壁面固定料',`${fmtLen(sum(['wall']))} ${unit}（壁面收邊防水同長）`]);
+  rows.push(['立柱',M.posts.length?`${M.posts.length} 支：${groupLens(M.posts.map(q2=>M.H(q2[0],q2[1])))}`:'無（掛壁式）']);
+  const full=M.live.filter(c=>c.full&&c.state!=='hatch'),cut=M.live.filter(c=>!c.full&&c.state!=='hatch'),hatch=M.live.filter(c=>c.state==='hatch');
+  {const m=new Map();for(const c of full){const k=`${fmtLen(Math.round(c.w/10)*10)}×${fmtLen(Math.round(c.l/10)*10)}`;m.set(k,(m.get(k)||0)+1)}
+   rows.push(['板材（整片）',full.length?[...m.entries()].map(([k,n])=>`${k} ×${n}`).join('、')+` 片（寬×沿斜面長，${unit}）`:'—'])}
+  rows.push(['板材（異形）',cut.length?`${cut.length} 片：`+cut.map(c=>`#${c.no} ${fmtLen(c.bb.x1-c.bb.x0)}×${fmtLen((c.bb.y1-c.bb.y0)*M.fac)}`).join('、'):'—']);
+  if(hatch.length)rows.push(['可開式維修孔',`${hatch.length} 處：`+hatch.map(c=>'#'+c.no).join('、')]);
+  const holeCells=M.live.filter(c=>c.holes.some(o=>o.mode===OBS_MODE[0]));
+  if(holeCells.length)rows.push(['開孔位置',holeCells.map(c=>`格 #${c.no}（${c.holes.map(o=>o.type.replace(/（.*）/,'')).join('、')}）`).join('、')]);
+  rows.push(['屋面面積',`${M.m2.toFixed(2)} m²（${(M.m2/3.3058).toFixed(2)} 坪）× ${q} 組`]);
+  if(p.gutter){const gl=M.gut.reduce((a,g)=>a+Math.hypot(g[1][0]-g[0][0],g[1][1]-g[0][1]),0);
+    rows.push(['排水溝',`${fmtLen(gl)} ${unit}，落水頭 ${M.dps.length} 個，落水管約 ${M.dps.map(d=>fmtLen(M.H(d[0],d[1]))).join('、')} ${unit}`])}
+  rows.push(['出簷',`前 ${fmtLen(p.ovF)}、側 ${fmtLen(p.ovS)} ${unit}`]);
+  for(const en of M.enc){const e=en.e,ha=M.H(e.a[0],e.a[1]),hb=M.H(e.b[0],e.b[1]);
+    rows.push([`封邊（${({front:'前',left:'左',right:'右'})[e.kind]}）`,`${en.t}，寬 ${fmtLen(e.len)}，高 ${fmtLen(Math.min(ha,hb))}～${fmtLen(Math.max(ha,hb))} ${unit}，約 ${(e.len*(ha+hb)/2/1e6).toFixed(2)} m²`])}
+  return rows}
+
+/* ---------- 2D 圖面 ---------- */
+function bCanopy(it){
+  const p=it.p,M=canopyModel(p),{pts,panel,E,H,pb}=M;
+  const Hm=Math.max(M.Hb,M.HbR,M.Hf,M.HfR,1),W=pb.x1-pb.x0,Dp=pb.y1-Math.min(0,pb.y0),k=Math.max(W,Dp,Hm),d=new Dw(k);
+  const fs=k*0.034,pw=k*0.014,xL=pb.x0,xR=pb.x1;
+  const title=(y,s)=>d.text(xL,y,s,fs*1.1,'TEXT','start',0,true);
+  const encFill=(poly,t,label)=>{
+    if(t==='實牆')d.poly(poly,'WALL','wall',true,0.8);
+    else if(t==='百葉'||t==='隔柵'){d.poly(poly,'SASH','white',true,0.8);const bb=bbox(poly);
+      if(t==='百葉')for(let y=bb.y0+100;y<bb.y1;y+=100)d.line(bb.x0+k*0.004,y,bb.x1-k*0.004,y,'GRID',0.7);
+      else for(let x=bb.x0+120;x<bb.x1;x+=120)d.line(x,bb.y0+k*0.004,x,bb.y1-k*0.004,'GRID',0.7)}
+    else{d.poly(poly,'GLASS','glass',true,0.8);if(t==='橫拉窗'){const bb=bbox(poly),n=Math.max(2,Math.round((bb.x1-bb.x0)/900));for(let i=1;i<n;i++){const x=bb.x0+(bb.x1-bb.x0)*i/n;d.line(x,bb.y0,x,bb.y1,'SASH',0.8)}}}
+    const bb=bbox(poly);if(bb.x1-bb.x0>fs*3)d.text((bb.x0+bb.x1)/2,bb.y1-fs*0.8,label||t,fs*0.8,'NOTE')};
+  /* 正視圖 */
+  const G1=Hm,fz=(x,y)=>G1-H(x,y);
+  title(-k*0.06,'正視圖');
+  for(const en of M.enc)if(en.e.kind==='front'){const {a,b}=en.e;encFill([[a[0],G1],[b[0],G1],[b[0],fz(b[0],b[1])],[a[0],fz(a[0],a[1])]],en.t,'前封 '+en.t)}
+  d.poly(panel.map(q=>[q[0],fz(q[0],q[1])]),'GLASS','glass',true,0.4);
+  for(const s of M.pur)d.line(s.xa,fz(s.xa,s.y),s.xb,fz(s.xb,s.y),'GRID');
+  for(const s of M.raf)d.line(s.x,fz(s.x,s.ya),s.x,fz(s.x,s.yb),'FRAME',1.1);
+  for(const e of E){if(e.kind==='wall')d.line(e.a[0],fz(e.a[0],e.a[1]),e.b[0],fz(e.b[0],e.b[1]),'HIDDEN');else d.line(e.a[0],fz(e.a[0],e.a[1]),e.b[0],fz(e.b[0],e.b[1]),'FRAME',3)}
+  d.text((M.x0+M.x1)/2,fz((M.x0+M.x1)/2,0)-fs*0.5,'壁面固定線',fs*0.75,'NOTE');
+  for(const [x,y] of M.posts)d.rect(x-pw/2,fz(x,y),pw,H(x,y),'SASH','sash');
+  for(const g of M.gut)d.line(g[0][0],fz(g[0][0],g[0][1])+k*0.012,g[1][0],fz(g[1][0],g[1][1])+k*0.012,'GUTTER');
+  for(const [x,y] of M.dps)d.line(x,fz(x,y)+k*0.012,x,G1,'GUTTER',0.6);
+  for(const o of M.obs){const T=obsType(o.type);
+    if(T.k==='pipe'){const x=+o.x,top=fz(x,+o.y)-k*0.06;d.rect(x-Math.max(+o.w,k*0.006)/2,top,Math.max(+o.w,k*0.006),G1-top,'OBS','white',0.8);
+      if(/T彎頭/.test(o.type))d.line(x-k*0.02,top,x+k*0.02,top,'OBS',2.5);d.text(x,top-fs*0.35,'#'+o.no,fs*0.7,'OBS')}
+    else if(T.k==='wall'){const x=+o.x,y2=G1-(+o.h||0),y1=y2-(+o.d||0);d.rect(x,y1,+o.w||0,+o.d||0,'OBS','white',0.8);d.text(x+(+o.w||0)/2,y1+(+o.d||0)/2+fs*0.3,`#${o.no} ${o.type.replace(/（.*）/,'')}`,fs*0.65,'OBS')}}
+  d.line(xL-k*0.05,G1,xR+k*0.05,G1,'GROUND');
+  d.dimH(xL,xR,G1+k*0.08,G1,fmtLen(xR-xL));
+  d.dimV(fz(M.x0,M.Dy),G1,xL-k*0.08,xL,fmtLen(H(M.x0,M.Dy)));
+  if(p.hlr){d.dimV(fz(M.x1,M.Dy),G1,xR+k*0.08,xR,fmtLen(H(M.x1,M.Dy)));d.dimV(fz(M.x1,0),G1,xR+k*0.16,xR,fmtLen(H(M.x1,0)))}
+  else d.dimV(fz(M.x1,0),G1,xR+k*0.08,xR,fmtLen(M.Hb));
+
+  /* 俯視圖 */
+  const y0=G1+k*0.38,P=([x,y])=>[x,y0+y];
+  title(y0-k*0.13,`俯視圖　板材 ${M.live.length} 片（整片 ${M.live.filter(c=>c.full).length}、異形 ${M.live.filter(c=>!c.full).length}）`);
+  for(const e of E)if(e.kind==='wall'){if(Math.abs(e.a[1])<1&&Math.abs(e.b[1])<1)d.rect(Math.min(e.a[0],e.b[0]),y0-k*0.03,e.len,k*0.03,'WALL','wall');else d.line(e.a[0],y0+e.a[1],e.b[0],y0+e.b[1],'WALL',8)}
+  for(const o of M.obs)if(o.k==='wall'){d.rect(+o.x,y0-k*0.075,+o.w||0,k*0.035,'OBS','white',0.8);d.text(+o.x+(+o.w||0)/2,y0-k*0.05+fs*0.25,'#'+o.no,fs*0.6,'OBS')}
+  const showNo=M.cells.length<=90;
+  for(const c of M.cells){const fill=c.state==='void'?'white':c.state==='hatch'?'hatch':c.holes.some(o=>o.mode===OBS_MODE[0])?'hole':'glass';
+    d.poly(c.poly.map(P),'GLASS',fill,true,0.5,c.key);
+    const cx=(c.bb.x0+c.bb.x1)/2,cy=y0+(c.bb.y0+c.bb.y1)/2,sz=Math.min(fs*0.62,(c.bb.x1-c.bb.x0)*0.3);
+    if(c.state==='void'){d.line(c.bb.x0,y0+c.bb.y0,c.bb.x1,y0+c.bb.y1,'NOTE',0.6);d.line(c.bb.x1,y0+c.bb.y0,c.bb.x0,y0+c.bb.y1,'NOTE',0.6);d.text(cx,cy+sz*0.35,'挖空',sz,'NOTE')}
+    else if(c.state==='hatch')d.text(cx,cy+sz*0.35,'維修孔',sz,'TEXT');
+    else if(showNo)d.text(cx,cy+sz*0.35,String(c.no),sz,'NOTE')}
+  for(const s of M.pur)d.line(s.xa,y0+s.y,s.xb,y0+s.y,'GRID',1.4);
+  for(const s of M.raf)d.line(s.x,y0+s.ya,s.x,y0+s.yb,'FRAME',1.6);
+  d.poly(pts.map(P),'FRAME',null,true,2.2);
+  if(+p.ovF>0||+p.ovS>0)d.poly(panel.map(P),'HIDDEN',null,true,0.8);
+  for(const g of M.gut)d.line(g[0][0],y0+g[0][1],g[1][0],y0+g[1][1],'GUTTER',1.6);
+  for(const [x,y] of M.dps)d.circle(x,y0+y,k*0.012,'GUTTER','white');
+  for(const [x,y] of M.posts)d.rect(x-pw,y0+y-pw,pw*2,pw*2,'FRAME','ink');
+  for(const o of M.obs){if(!o.rect)continue;const [a,b,c2,e]=o.rect;
+    if(o.k==='pipe')d.circle((a+c2)/2,y0+(b+e)/2,Math.max((c2-a)/2,k*0.007),'OBS','white');else d.rect(a,y0+b,c2-a,e-b,'OBS',null,1.2);
+    d.text((a+c2)/2,y0+b-fs*0.3,`#${o.no} ${o.type.replace(/（.*）/,'')}`,fs*0.62,'OBS')}
+  { const cx=(M.x0+M.x1)/2,ln=Math.min(M.Dy*0.4,k*0.15);
+    if(p.drain==='左側排水')d.arrow(cx+ln/2,y0+M.Dy*0.5,cx-ln/2,y0+M.Dy*0.5);else if(p.drain==='右側排水')d.arrow(cx-ln/2,y0+M.Dy*0.5,cx+ln/2,y0+M.Dy*0.5);
+    else d.arrow(M.x0+M.Lx*0.06,y0+M.Dy*0.25,M.x0+M.Lx*0.06,y0+M.Dy*0.25+ln)}
+  E.forEach((e,i)=>{const mx=(e.a[0]+e.b[0])/2,my=(e.a[1]+e.b[1])/2,off=(e.kind==='wall'?k*0.1:k*0.035+(e.kind==='front'?(+p.ovF||0):(+p.ovS||0)));
+    let a=Math.atan2(e.b[1]-e.a[1],e.b[0]-e.a[0])*180/Math.PI;if(a>90)a-=180;if(a<-90)a+=180;
+    if(e.len>fs*2)d.text(mx+e.n[0]*off,y0+my+e.n[1]*off+fs*0.35,fmtLen(e.len),fs*0.72,'DIM','middle',Math.abs(a)<1?0:a)});
+  if(p.shape==='自訂')pts.forEach((q,i)=>{const e1=E[(i-1+pts.length)%pts.length],e2=E[i],nx=(e1.n[0]+e2.n[0]),ny=(e1.n[1]+e2.n[1]),l=Math.hypot(nx,ny)||1;
+    d.text(q[0]+nx/l*k*0.045,y0+q[1]+ny/l*k*0.045+fs*0.3,'P'+(i+1),fs*0.7,'TEXT','middle',0,true)});
+  let cy2=y0+pb.y1+k*0.09;
+  if(M.X.length-1<=16&&M.X.length>2){for(let i=0;i<M.X.length-1;i++){const w=M.X[i+1]-M.X[i];d.dimH(M.X[i],M.X[i+1],cy2,y0+pb.y1,w>fs*2.6?fmtLen(w):'')}cy2+=k*0.08}
+  d.dimH(xL,xR,cy2,y0+pb.y1,fmtLen(xR-xL));
+  d.dimV(y0,y0+M.y1,xR+k*0.08,xR,fmtLen(M.y1));
+  if(pb.y1-M.y1>1)d.dimV(y0,y0+pb.y1,xR+k*0.16,xR,fmtLen(pb.y1));
+  d.text(xL,cy2+k*0.07,`面積 ${M.m2.toFixed(2)} m²　斜長 ${fmtLen(M.sl)}　斜度 ${M.ang.toFixed(1)}°　骨架 ${M.raf.length} 支　橫料 ${M.pur.length} 支　立柱 ${M.posts.length} 支`,fs*0.75,'DIM','start');
+
+  /* 側視圖（從右側看） */
+  const G3=cy2+k*0.3+Hm,sz=(y)=>G3-H(M.x1,y);
+  title(G3-Hm-k*0.12,'側視圖（從右側看）');
+  for(const en of M.enc)if(en.e.kind==='right'||en.e.kind==='left'){const {a,b}=en.e;encFill([[a[1],G3],[b[1],G3],[b[1],G3-H(b[0],b[1])],[a[1],G3-H(a[0],a[1])]],en.t,(en.e.kind==='right'?'右封 ':'左封 ')+en.t)}
+  d.rect(-k*0.035,G3-Hm-k*0.06,k*0.035,Hm+k*0.06,'WALL','wall');
+  d.line(-k*0.06,G3,pb.y1+k*0.06,G3,'GROUND');
+  for(const [x,y] of M.posts)d.rect(y-pw/2,G3-H(x,y),pw,H(x,y),'SASH','sash');
+  d.line(0,sz(0),pb.y1,sz(pb.y1),'FRAME',4);
+  for(const y of M.ysP)d.rect(y-pw*0.6,sz(y)-pw*2,pw*1.2,pw*1.2,'FRAME','ink');
+  if(M.gut.length)d.rect(pb.y1-k*0.012,sz(pb.y1),k*0.024,k*0.02,'GUTTER','white');
+  for(const o of M.obs)if(o.k==='pipe'){const y=+o.y,top=sz(y)-k*0.06;d.line(y,G3,y,top,'OBS',Math.max(1,(+o.w||25)/(k*0.004)*0.5));d.text(y,top-fs*0.35,'#'+o.no,fs*0.7,'OBS')}
+  d.text(pb.y1/2,(sz(0)+sz(pb.y1))/2-fs*1.4,`斜度 ${M.ang.toFixed(1)}°　斜長 ${fmtLen(M.sl)}`,fs*0.8,'DIM');
+  d.dimH(0,M.y1,G3+k*0.08,G3,fmtLen(M.y1));
+  if(pb.y1-M.y1>1)d.dimH(M.y1,pb.y1,G3+k*0.16,G3,'出簷 '+fmtLen(pb.y1-M.y1));
+  d.dimV(sz(0),G3,-k*0.115,-k*0.035,fmtLen(H(M.x1,0)));
+  d.dimV(sz(M.y1),G3,pb.y1+k*0.08,pb.y1,fmtLen(H(M.x1,M.y1)));
+  return d;
+}
+
+/* ---------- 3D ---------- */
+function canopy3D(T,it,ctx){
+  const {g,box,alu,glassM,wallM,groundM,mats}=ctx,p=it.p,M=canopyModel(p),s=v=>v/1000;
+  const Hm=s(Math.max(M.Hb,M.HbR,M.Hf,M.HfR)),pb=M.pb,v3=(x,y,dz)=>new T.Vector3(s(x),s(M.H(x,y))+(dz||0),s(y));
+  const beam=(A,B,w,h,m)=>{const len=A.distanceTo(B);if(len<1e-3)return;const me=new T.Mesh(new T.BoxGeometry(w,h,len),m);me.position.copy(A).add(B).multiplyScalar(0.5);me.lookAt(B);g.add(me)};
+  const mk=o=>{const m=new T.MeshLambertMaterial(o);mats.push(m);return m};
+  if(/玻璃/.test(p.panel))glassM.color.set(0xa8d0e6);
+  else if(/鋁板/.test(p.panel)){glassM.transparent=false;glassM.opacity=1;glassM.depthWrite=true;glassM.color.set(0xd0d4d8)}
+  else glassM.color.set(0x7fb8d6);
+  const hatchM=mk({color:0xf2c94c,transparent:true,opacity:0.7,side:T.DoubleSide,depthWrite:false});
+  box(s(pb.x1-pb.x0)+2,0.02,s(pb.y1)+3,s(pb.x0+pb.x1)/2,-0.01,s(pb.y1)/2+0.6,groundM);
+  box(s(M.Lx)+1,Hm+0.8,0.2,s(M.x0+M.x1)/2,(Hm+0.8)/2,-0.1,wallM);
+  for(const e of M.E)if(e.kind==='wall'&&!(Math.abs(e.a[1])<1&&Math.abs(e.b[1])<1)){const A=new T.Vector3(s(e.a[0]),(Hm+0.8)/2,s(e.a[1])),B=new T.Vector3(s(e.b[0]),(Hm+0.8)/2,s(e.b[1]));
+    const me=new T.Mesh(new T.BoxGeometry(0.2,Hm+0.8,A.distanceTo(B)),wallM);me.position.copy(A).add(B).multiplyScalar(0.5);me.lookAt(B);me.translateX(-0.1*Math.sign(e.n[0]||1));g.add(me)}
+  for(const c of M.cells){if(c.state==='void')continue;const sh=new T.Shape();c.poly.forEach(([x,y],i)=>i?sh.lineTo(s(x),s(y)):sh.moveTo(s(x),s(y)));
+    const geo=new T.ShapeGeometry(sh),pos=geo.attributes.position;
+    for(let i=0;i<pos.count;i++){const x=pos.getX(i),y=pos.getY(i);pos.setXYZ(i,x,s(M.H(x*1000,y*1000))+0.09,y)}
+    pos.needsUpdate=true;geo.computeVertexNormals();g.add(new T.Mesh(geo,c.state==='hatch'?hatchM:glassM))}
+  for(const r of M.raf)beam(v3(r.x,r.ya,0),v3(r.x,r.yb,0),0.05,0.1,alu);
+  for(const r of M.pur)beam(v3(r.xa,r.y,0.06),v3(r.xb,r.y,0.06),0.05,0.035,alu);
+  for(const e of M.E)beam(v3(e.a[0],e.a[1],e.kind==='wall'?0:-0.03),v3(e.b[0],e.b[1],e.kind==='wall'?0:-0.03),e.kind==='wall'?0.08:0.1,e.kind==='wall'?0.1:0.14,alu);
+  for(const [x,y] of M.posts){const h=s(M.H(x,y));box(0.1,h,0.1,s(x),h/2,s(y),alu)}
+  for(const gg of M.gut)beam(v3(gg[0][0],gg[0][1],-0.1),v3(gg[1][0],gg[1][1],-0.1),0.12,0.08,alu);
+  for(const [x,y] of M.dps){const h=s(M.H(x,y))-0.1,cy=new T.Mesh(new T.CylinderGeometry(0.04,0.04,h,10),alu);cy.position.set(s(x),h/2,s(y));g.add(cy)}
+  const encM={'固定玻璃':glassM,'橫拉窗':glassM,'百葉':mk({color:0xb0b6bc,transparent:true,opacity:0.8,side:T.DoubleSide}),'隔柵':mk({color:0x9aa1a8,transparent:true,opacity:0.6,side:T.DoubleSide}),'實牆':wallM};
+  for(const en of M.enc){const {a,b}=en.e,geo=new T.BufferGeometry();
+    geo.setAttribute('position',new T.Float32BufferAttribute([s(a[0]),0,s(a[1]),s(b[0]),0,s(b[1]),s(b[0]),s(M.H(b[0],b[1]))-0.05,s(b[1]),s(a[0]),s(M.H(a[0],a[1]))-0.05,s(a[1])],3));
+    geo.setIndex([0,1,2,0,2,3]);geo.computeVertexNormals();g.add(new T.Mesh(geo,encM[en.t]||glassM))}
+  const pipeM=mk({color:0xe8e8e8}),darkM=mk({color:0x55606b});
+  for(const o of M.obs){const T0=obsType(o.type);
+    if(T0.k==='pipe'){const r=Math.max(s(+o.w||25)/2,0.015),h=s(M.H(+o.x,+o.y))+0.45,cy=new T.Mesh(new T.CylinderGeometry(r,r,h,12),/糞管|油煙/.test(o.type)?darkM:pipeM);
+      cy.position.set(s(+o.x),h/2,s(+o.y));g.add(cy);
+      if(/T彎頭/.test(o.type)){const t=new T.Mesh(new T.CylinderGeometry(r,r,r*6,12),darkM);t.rotation.z=Math.PI/2;t.position.set(s(+o.x),h,s(+o.y));g.add(t)}}
+    else if(T0.k==='area')box(s(+o.w||0),0.04,s(+o.d||0),s((+o.x||0)+(+o.w||0)/2),0.02,s((+o.y||0)+(+o.d||0)/2),darkM);
+    else box(s(+o.w||0),s(+o.d||0),0.3,s((+o.x||0)+(+o.w||0)/2),s((+o.h||0)+(+o.d||0)/2),0.15,darkM)}
+  return {x:s(M.x0+M.x1)/2,y:Hm*0.55,z:s(M.y1)*0.45,r:Math.max(s(M.Lx),s(M.y1),Hm)*1.6};
+}
+
+/* ---------- 表單 ---------- */
+function ptsTable(p){const pts=p.pts||[];return `<div class="fld full"><span>外形座標（X：沿牆從左邊量；Y：從牆面往外量；${unit}）</span>
+  ${pts.map((q,i)=>`<div class="prow"><b>P${i+1}</b><input inputmode="decimal" data-pt="${i}.0" value="${fmtLen(q[0])}" aria-label="P${i+1} X"><input inputmode="decimal" data-pt="${i}.1" value="${fmtLen(q[1])}" aria-label="P${i+1} Y"><label class="mini"><input type="checkbox" data-pw="${i}" ${(p.wallE||[]).includes(i)?'checked':''}>靠牆</label><button class="x" data-act="ptDel" data-i="${i}" aria-label="刪除 P${i+1}">✕</button></div>`).join('')}
+  <span style="font-weight:400">「靠牆」代表這一點到下一點的邊貼著牆（例如犄角的凸牆）；Y＝0 的邊自動算靠牆。請沿外圍依序輸入。</span>
+  <div class="two"><button class="b" data-act="ptAdd">＋ 加一點</button><button class="b" data-act="ptReset">回到矩形</button></div></div>`}
+function postTable(p){const ps=p.posts||[];return `<div class="fld full"><span>立柱位置（X 沿牆、Y 離牆，${unit}）</span>
+  ${ps.map((q,i)=>`<div class="prow"><b>柱${i+1}</b><input inputmode="decimal" data-post="${i}.0" value="${fmtLen(q[0])}"><input inputmode="decimal" data-post="${i}.1" value="${fmtLen(q[1])}"><span></span><button class="x" data-act="postDel" data-i="${i}" aria-label="刪除柱${i+1}">✕</button></div>`).join('')}
+  <div class="two"><button class="b" data-act="postAdd">＋ 加立柱</button><button class="b" data-act="postAuto">帶入自動位置</button></div></div>`}
+function obsSection(p){const L=(i,k,l,v)=>`<label class="fld"><span>${l}</span><div class="suf"><input inputmode="decimal" data-ob="${i}.${k}" value="${fmtLen(v)}"><i>${unit}</i></div></label>`;
+  return `<h2>障礙物與預留（管線、樓梯口、維修孔、窗戶）</h2>
+  ${(p.obs||[]).map((o,i)=>{const T=obsType(o.type);
+    const f=T.k==='pipe'?L(i,'x','X（管中心，沿牆）',o.x)+L(i,'y','Y（管中心，離牆）',o.y)+L(i,'w','管徑',o.w)
+      :T.k==='wall'?L(i,'x','X（左緣，沿牆）',o.x)+L(i,'h','離地高度',o.h)+L(i,'w','寬',o.w)+L(i,'d','高',o.d)
+      :L(i,'x','X（左緣，沿牆）',o.x)+L(i,'y','Y（靠牆那側，離牆）',o.y)+L(i,'w','寬（沿牆）',o.w)+L(i,'d','深（離牆）',o.d);
+    return `<div class="panel form" style="margin-bottom:10px">
+      <label class="fld"><span>#${i+1} 種類</span><select data-ob="${i}.type">${OBS.map(t=>`<option ${t.n===o.type?'selected':''}>${t.n}</option>`).join('')}</select></label>
+      <label class="fld"><span>處理方式</span><select data-ob="${i}.mode">${OBS_MODE.map(m=>`<option ${m===o.mode?'selected':''}>${m}</option>`).join('')}</select></label>
+      ${f}<label class="fld full"><span>備註</span><input data-ob="${i}.note" value="${esc(o.note||'')}" placeholder="例：冷氣排水改接到排水溝"></label>
+      <button class="b ghost danger fld full" data-act="obDel" data-i="${i}">刪除 #${i+1}</button></div>`}).join('')}
+  <div class="chips" style="margin-top:0">${['冷氣排水管','自來水管','糞管透氣管（T彎頭）','排油煙管','樓梯口','維修孔／檢修口','窗戶／雨遮','冷氣室外機','其他（地面）'].map(n=>`<button class="chip" data-act="obAdd" data-t="${n}">＋ ${n.replace(/（.*）/,'').replace(/／.*/,'')}</button>`).join('')}</div>`}
+function canopyForm(it){const p=it.p,vis=canopyVisible(p),lab=canopyLabels(p);let h='';
+  for(const [g,keys] of CANOPY_GROUPS){const ks=keys.filter(k=>vis.has(k));
+    h+=`<h2>${g}</h2><div class="panel form">${ks.map(k=>fieldHTML(k,p[k],lab[k])).join('')}${g==='外形'&&p.shape==='自訂'?ptsTable(p):''}${g==='骨架與立柱'&&p.postMode==='自訂位置'?postTable(p):''}</div>`}
+  return h+obsSection(p)}
+function newObs(type,p){const T=obsType(type),M=canopyModel(p);
+  const o={id:uid(),type:T.n,mode:OBS_MODE[T.m],w:T.w,d:T.d||0,h:T.h||0,note:''};
+  if(T.k==='pipe'){o.x=Math.round((M.x0+M.x1)/2);o.y=Math.round(M.y1/2)}
+  else if(T.k==='wall'){o.x=Math.round((M.x0+M.x1)/2-T.w/2);o.y=0}
+  else{o.x=Math.round((M.x0+M.x1)/2-T.w/2);o.y=Math.round(Math.max(0,M.y1/2-(T.d||0)/2))}
+  return o}
+function upgradeItem(it){if(!it||!TYPES[it.type]||!it.p)return it;const t=TYPES[it.type],d=JSON.parse(JSON.stringify(t.d)),p={...it.p};
+  if(it.type==='canopy'&&typeof p.posts==='number'){if(p.posts===0)p.postMode='掛壁式（無柱）';p.posts=[]}
+  for(const k of t.f)if(p[k]===undefined){const f=FIELDS[k];p[k]=d[k]!==undefined?d[k]:f.t==='sel'?f.o[0]:f.t==='bool'?false:f.t==='int'?f.min:f.t==='list'?[]:0}
+  if(it.type==='canopy'){for(const k of ['pts','wallE','posts','obs','marks'])if(p[k]===undefined)p[k]=d[k];
+    if(!Array.isArray(p.posts))p.posts=[];if(!Array.isArray(p.obs))p.obs=[];if(!Array.isArray(p.wallE))p.wallE=[];if(!p.marks||typeof p.marks!=='object')p.marks={}}
+  return {...it,p}}
+/* ================= 3D 預覽（按需載入 three.js，離開即釋放記憶體） ================= */
+const COLOR3D={'白色':0xf0f0ee,'銀色':0xbfc4c9,'香檳金':0xd6c49a,'咖啡色':0x5b4332,'黑色':0x2b2b2b,'其他':0xbfc4c9};
+function loadThree(){
+  if(window.THREE)return Promise.resolve(window.THREE);
+  if(!loadThree.p)loadThree.p=new Promise((res,rej)=>{const s=document.createElement('script');
+    s.src='https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+    s.onload=()=>res(window.THREE);s.onerror=()=>{loadThree.p=null;s.remove();rej(new Error('3D 元件載入失敗，請確認網路'))};
+    document.head.appendChild(s)});
+  return loadThree.p;
+}
+function build3D(T,it){
+  const g=new T.Group(),p=it.p,mm=v=>(+v||0)/1000;
+  const alu=new T.MeshLambertMaterial({color:COLOR3D[p.color]||0xbfc4c9});
+  const glassM=new T.MeshLambertMaterial({color:0x9cc9e0,transparent:true,opacity:0.33,side:T.DoubleSide,depthWrite:false});
+  const wallM=new T.MeshLambertMaterial({color:0xdcd6cc});
+  const groundM=new T.MeshLambertMaterial({color:0xc4ccd3});
+  const box=(w,h,dp,x,y,z,m,rx)=>{const me=new T.Mesh(new T.BoxGeometry(Math.max(w,0.002),Math.max(h,0.002),Math.max(dp,0.002)),m);me.position.set(x,y,z);if(rx)me.rotation.x=rx;g.add(me);return me};
+  let focus;
+  const mats=[alu,glassM,wallM,groundM];
+  if(it.type==='canopy'){focus=canopy3D(T,it,{g,box,alu,glassM,wallM,groundM,mats});
+  }else{
+    const W=mm(p.W),H=mm(p.H),f=0.045,dp=0.07,oy=it.type==='door'?0:0.9,ext=0.5,wt=0.2,Y=v=>oy+v;
+    box(ext,H+oy+ext,wt,-ext/2,(H+oy+ext)/2,-0.06,wallM);box(ext,H+oy+ext,wt,W+ext/2,(H+oy+ext)/2,-0.06,wallM);
+    box(W,ext,wt,W/2,oy+H+ext/2,-0.06,wallM);if(oy>0)box(W,oy,wt,W/2,oy/2,-0.06,wallM);
+    box(W+2*ext+1.5,0.02,2.5,W/2,-0.01,0.9,groundM);
+    const frame=(x,y,w,h,t,z)=>{box(w,t,dp,x+w/2,Y(y+t/2),z,alu);box(w,t,dp,x+w/2,Y(y+h-t/2),z,alu);box(t,h,dp,x+t/2,Y(y+h/2),z,alu);box(t,h,dp,x+w-t/2,Y(y+h/2),z,alu)};
+    const pane=(x,y,w,h,z)=>box(w,h,0.006,x+w/2,Y(y+h/2),z,glassM);
+    frame(0,0,W,H,f,0);const iw=W-2*f,ih=H-2*f;
+    if(it.type==='slide'){const n=+p.panels||2,pw=iw/n;for(let i=0;i<n;i++){const x=f+i*pw,z=i%2?-0.02:0.02;frame(x,f,pw,ih,f*0.8,z);pane(x+f*0.8,f+f*0.8,pw-f*1.6,ih-f*1.6,z)}}
+    else if(it.type==='fixed'){const c=+p.cols||1,r=+p.rows||1;pane(f,f,iw,ih,0);
+      for(let i=1;i<c;i++)box(f*0.7,ih,dp,f+iw*i/c,Y(f+ih/2),0,alu);for(let j=1;j<r;j++)box(iw,f*0.7,dp,f+iw/2,Y(f+ih*j/r),0,alu)}
+    else if(it.type==='casement'){const n=+p.sash||1,sw=iw/n;for(let i=0;i<n;i++){const x=f+i*sw;frame(x,f,sw,ih,f*0.8,0.01);pane(x+f*0.8,f+f*0.8,sw-f*1.6,ih-f*1.6,0.01)}}
+    else if(it.type==='louver'){const c=+p.cols||1,n=Math.max(4,Math.round(ih/0.09));for(let i=1;i<c;i++)box(f*0.7,ih,dp,f+iw*i/c,Y(f+ih/2),0,alu);
+      for(let j=0;j<n;j++)box(iw,0.004,0.085,f+iw/2,Y(f+ih*(j+0.5)/n),0,alu,-0.6)}
+    else if(it.type==='door'){const t=Math.min(mm(p.transom),H*0.6);let dy=f,dh=ih;
+      if(t>0){pane(f,H-t,iw,t-f,0);box(iw,f,dp,f+iw/2,Y(H-t),0,alu);dh=ih-t}
+      const leaf=(x,w)=>{frame(x,dy,w,dh,f*0.9,0.01);pane(x+f,dy+dh*0.38,w-2*f,dh*0.58,0.01);box(w-2*f,dh*0.36,0.02,x+w/2,Y(dy+f+dh*0.18),0.01,alu)};
+      if(p.style==='雙開'){leaf(f,iw/2);leaf(f+iw/2,iw/2)}else if(p.style==='橫拉門'){frame(f,dy,iw/2,dh,f*0.8,0.02);pane(f*1.8,dy+f*0.8,iw/2-f*1.6,dh-f*1.6,0.02);frame(f+iw/2,dy,iw/2,dh,f*0.8,-0.02);pane(f*1.8+iw/2,dy+f*0.8,iw/2-f*1.6,dh-f*1.6,-0.02)}
+      else leaf(f,iw)}
+    focus={x:W/2,y:oy+H/2,z:0,r:Math.max(W,H)*2.2};
+  }
+  return {g,focus,mats};
+}
+let V3=null;
+function dispose3D(){if(!V3)return;const v=V3;V3=null;try{v.off();v.scene.traverse(o=>{if(o.geometry)o.geometry.dispose()});v.mats.forEach(m=>m.dispose());
+  v.renderer.dispose();v.renderer.forceContextLoss&&v.renderer.forceContextLoss();v.renderer.domElement.remove()}catch(e){}}
+async function mount3D(box,it){
+  dispose3D();box.innerHTML='<div class="msg">正在載入 3D…</div>';
+  let T;try{T=await loadThree()}catch(e){box.innerHTML=`<div class="msg">${esc(e.message)}</div>`;return}
+  if(!box.isConnected)return;
+  const w=box.clientWidth||340,h=Math.round(w*0.82);
+  let renderer;try{renderer=new T.WebGLRenderer({antialias:true,preserveDrawingBuffer:true})}catch(e){box.innerHTML='<div class="msg">這支手機無法顯示 3D</div>';return}
+  renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));renderer.setSize(w,h);box.innerHTML='';box.appendChild(renderer.domElement);
+  const scene=new T.Scene();scene.background=new T.Color(0xeef1f4);
+  scene.add(new T.HemisphereLight(0xffffff,0x8a939c,0.85));const sun=new T.DirectionalLight(0xffffff,0.7);sun.position.set(4,9,7);scene.add(sun);
+  const {g,focus,mats}=build3D(T,it);scene.add(g);
+  const cam=new T.PerspectiveCamera(40,w/h,0.05,300),st={th:-0.6,ph:1.15,r:focus.r},tg=new T.Vector3(focus.x,focus.y,focus.z),r0=focus.r;
+  const upd=()=>{cam.position.set(tg.x+st.r*Math.sin(st.ph)*Math.sin(st.th),tg.y+st.r*Math.cos(st.ph),tg.z+st.r*Math.sin(st.ph)*Math.cos(st.th));cam.lookAt(tg);renderer.render(scene,cam)};
+  const el=renderer.domElement,pts=new Map();let pd=0;
+  const dn=e=>{try{el.setPointerCapture(e.pointerId)}catch(err){}pts.set(e.pointerId,{x:e.clientX,y:e.clientY})};
+  const mv=e=>{if(!pts.has(e.pointerId))return;const pv=pts.get(e.pointerId),c={x:e.clientX,y:e.clientY};pts.set(e.pointerId,c);
+    if(pts.size===1){st.th-=(c.x-pv.x)*0.009;st.ph=clamp(st.ph-(c.y-pv.y)*0.009,0.08,1.55)}
+    else if(pts.size===2){const [a,b]=[...pts.values()],dd=Math.hypot(a.x-b.x,a.y-b.y);if(pd)st.r=clamp(st.r*pd/dd,r0*0.25,r0*3);pd=dd}
+    upd()};
+  const up=e=>{pts.delete(e.pointerId);pd=0};
+  const wh=e=>{e.preventDefault();st.r=clamp(st.r*(1+e.deltaY*0.001),r0*0.25,r0*3);upd()};
+  el.addEventListener('pointerdown',dn);el.addEventListener('pointermove',mv);el.addEventListener('pointerup',up);el.addEventListener('pointercancel',up);el.addEventListener('wheel',wh,{passive:false});
+  V3={renderer,scene,mats,off(){el.removeEventListener('pointerdown',dn);el.removeEventListener('pointermove',mv);el.removeEventListener('pointerup',up);el.removeEventListener('pointercancel',up);el.removeEventListener('wheel',wh)},
+    preset(n){if(n==='front'){st.th=0;st.ph=Math.PI/2-0.02}else if(n==='side'){st.th=-Math.PI/2+0.01;st.ph=Math.PI/2-0.02}else if(n==='top'){st.th=0;st.ph=0.08}else{st.th=-0.6;st.ph=1.15}st.r=r0;upd()},
+    shot(){return new Promise(res=>{upd();renderer.domElement.toBlob(res,'image/png')})}};
+  upd();
+}
+/* ================= 畫面 ================= */
+const app=$('#app');
+const bar=html=>`<header class="bar"><div class="bar-inner">${html}</div></header>`;
+let AI=null,AIimg=null,aiCtl=null;
+const aiSel=new Set();
+
+function go(name,pid,iid){dispose3D();if(aiCtl){aiCtl.abort();aiCtl=null}
+  if(name==='list')photoCache.clear();if(name!=='item')aiSel.clear();
+  view={name,pid:pid||null,iid:iid||null,tab:name==='item'?'plan':view.tab,tool:''};render();scrollTo(0,0)}
+function render(){
+  if(view.name==='project'&&cur())return renderProject(cur());
+  if(view.name==='item'&&curItem())return renderItem(cur(),curItem());
+  if(view.name==='settings')return renderSettings();
+  view={name:'list',pid:null,iid:null,tab:'plan'};renderList();
+}
+
+/* ---------- 案場列表 ---------- */
+let query='';
+function cardsHTML(){
+  const q=query.trim().toLowerCase();
+  const list=projects.filter(p=>!q||[p.name,p.addr,p.phone].join(' ').toLowerCase().includes(q));
+  if(!list.length)return projects.length?'<p class="empty">找不到符合的案場。</p>':'<p class="empty">還沒有案場。新增一個案場，開始記錄門窗與採光罩尺寸。</p>';
+  return list.map(p=>{const t=totals(p),si=STATUS.indexOf(p.status);
+    const amt=t.cai||!t.m2?`${t.cai.toFixed(1)}<small>才</small>`:`${t.m2.toFixed(1)}<small>m²</small>`;
+    return `<button class="card" data-act="openProject" data-id="${p.id}"><b>${esc(p.name||'未命名案場')}</b>
+      <span class="big num">${amt}</span><small><span class="st s${si}">${esc(p.status)}</span>${esc(p.addr||'未填地址')}</small><small>${esc(p.date)}　${p.items.length} 項</small></button>`}).join('');
+}
+function renderList(){
+  app.innerHTML=bar(`<div class="title">門窗丈量</div><button class="barbtn" data-act="settings">設定</button>`)
+  +`<main><button class="b primary" data-act="newProject">新增案場</button>
+  ${store.db?'':'<p class="note" style="color:var(--danger)">這個瀏覽器無法儲存資料，關閉頁面後內容會消失。</p>'}
+  ${projects.length>3?`<input class="search" id="q" type="search" placeholder="搜尋業主、地址、電話" value="${esc(query)}" autocomplete="off">`:''}
+  <div class="list" id="plist">${cardsHTML()}</div>
+  ${settings.co.name?'':'<p class="note">先到「設定」填公司名稱與電話，PDF 和 CAD 圖框會自動帶入。</p>'}
+  <p class="note">資料存在這支手機的瀏覽器裡。記得定期到「設定」備份。</p></main>`;
+}
+
+/* ---------- 案場 ---------- */
+function renderProject(p){
+  const t=totals(p),qt=quoteTotals(p);
+  const items=p.items.length?p.items.map((it,i)=>`<button class="item" data-act="openItem" data-id="${it.id}"><span class="idx">${i+1}</span>
+      <span class="nm"><b>${esc(it.loc||'未填位置')}</b><small>${TYPES[it.type].n}　× ${it.qty} ${qtyUnit(it)}</small></span>
+      <span class="size">${sizeText(it)}<small>${amountText(it)}</small></span></button>`).join('')
+    :'<p class="empty" style="padding:22px 16px">選下面的類型，新增第一個項目。</p>';
+  const photos=p.photos.map(id=>`<button class="ph" data-act="photo" data-id="${id}" aria-label="照片"><img data-pid="${id}" alt=""></button>`).join('');
+  const tel=p.phone?`<a href="tel:${esc(p.phone.replace(/[^\d+]/g,''))}">撥號</a>`:'';
+  const nav=p.addr?`<a href="https://maps.apple.com/?q=${encodeURIComponent(p.addr)}" target="_blank" rel="noopener">導航</a>`:'';
+  app.innerHTML=bar(`<button class="back" data-act="home">‹ 案場</button><div class="title">${esc(p.name||'未命名案場')}</div>`)
+  +`<main>
+    <h2>客戶資料</h2>
+    <div class="panel form">
+      <label class="fld"><span>業主</span><input data-pf="name" value="${esc(p.name)}" placeholder="例：王先生" autocomplete="off"></label>
+      <label class="fld"><span>進度</span><select data-pf="status">${STATUS.map(s=>`<option ${s===p.status?'selected':''}>${s}</option>`).join('')}</select></label>
+      <label class="fld"><span>電話</span><div class="row"><input data-pf="phone" type="tel" value="${esc(p.phone)}" autocomplete="off">${tel}</div></label>
+      <label class="fld"><span>丈量日期</span><input data-pf="date" type="date" value="${esc(p.date)}"></label>
+      <label class="fld full"><span>地址</span><div class="row"><input data-pf="addr" value="${esc(p.addr)}" autocomplete="off">${nav}</div></label>
+      <label class="fld full"><span>案場備註</span><textarea data-pf="note" placeholder="例：舊窗拆除、樓層、施工時間">${esc(p.note)}</textarea></label>
+    </div>
+    <h2>項目</h2>
+    <div class="panel">${items}</div>
+    <div class="chips">${Object.entries(TYPES).map(([k,v])=>`<button class="chip" data-act="addItem" data-t="${k}">＋ ${v.n}</button>`).join('')}</div>
+    <div class="tot"><span><b>${t.cai.toFixed(1)}</b>才（門窗）</span><span><b>${t.m2.toFixed(2)}</b>m²（採光罩）</span></div>
+    ${AI?`<h2>AI 快速輸入</h2>
+    <div class="panel"><div class="pad stack">
+      <textarea id="aiQuick" placeholder="用說的或打字，例如：客廳橫拉窗寬180高120兩扇氣密窗白色；主臥固定窗90乘60；頂樓採光罩長5米深2米後高3米前高2米6"></textarea>
+      <button class="b primary" data-act="aiQuick">AI 轉成項目</button>
+      <p class="note" style="margin:0">iPhone 鍵盤的麥克風可以直接語音輸入。沒寫單位時以 ${unit} 計算。</p>
+    </div></div>`:''}
+    <h2>現場照片</h2>
+    <div class="photos">${photos}<label class="addph" for="photoIn">＋ 拍照 / 相簿</label></div>
+    <input type="file" id="photoIn" class="vh" accept="image/*" multiple>
+    <h2>報價</h2>
+    <div class="panel form">
+      <label class="fld"><span>其他費用（拆舊、運費等）</span><div class="suf"><input inputmode="numeric" data-pf="extra" value="${+p.extra||0}"><i>元</i></div></label>
+      <label class="fld"><span>費用說明</span><input data-pf="extraNote" value="${esc(p.extraNote)}" placeholder="例：拆舊窗 3 樘"></label>
+      <div class="fld full" id="qtot">${hasPrices()?quoteLine(qt):'<span>到「設定」填各類型單價，就會自動算出報價並印在 PDF。</span>'}</div>
+    </div>
+    <h2>匯出給業者</h2>
+    <div class="stack">
+      <button class="b primary" data-act="pdf">匯出 PDF 施工圖（含圖框）</button>
+      <div class="two"><button class="b" data-act="dxf">CAD 圖檔（DXF）</button><button class="b" data-act="csv">CSV 清單</button></div>
+      <button class="b" data-act="backupOne">備份這個案場（可傳到另一支手機匯入）</button>
+      <button class="b ghost danger" data-act="delProject">刪除這個案場</button>
+    </div>
+  </main>`;
+  loadThumbs(p);
+}
+function quoteLine(qt){return `<span style="font-size:15px;color:var(--ink)">小計 ${money(qt.sub)}${settings.tax?`　稅 ${money(qt.tax)}`:''}　<b class="num" style="font-size:24px">合計 ${money(qt.total)}</b></span>`}
+
+/* ---------- 項目 ---------- */
+function fieldHTML(k,v,lo){const f=FIELDS[k],ll=lo||f.l;
+  const lab=`<span>${ll}${f.hint?`<em>${f.hint}</em>`:''}</span>`;
+  if(f.t==='list')return `<label class="fld">${lab}<div class="suf"><input inputmode="text" data-f="${k}" value="${(v||[]).map(fmtLen).join(', ')}" placeholder="例：60, 60, 55" autocomplete="off"><i>${unit}</i></div></label>`;
+  if(f.t==='len')return `<label class="fld">${lab}<div class="suf"><input inputmode="decimal" data-f="${k}" value="${fmtLen(v)}" autocomplete="off"><i>${unit}</i></div></label>`;
+  if(f.t==='int')return `<label class="fld">${lab}<div class="suf"><input inputmode="numeric" data-f="${k}" value="${esc(v)}" autocomplete="off"></div></label>`;
+  if(f.t==='bool')return `<label class="fld tog${k==='tri'||k==='hlr'||k==='heater'?' full':''}"><span>${ll}</span><input type="checkbox" data-f="${k}" ${v?'checked':''}></label>`;
+  return `<label class="fld">${lab}<select data-f="${k}">${f.o.map(o=>`<option value="${esc(o)}" ${String(o)===String(v)?'selected':''}>${esc(o)}</option>`).join('')}</select></label>`;
+}
+function formFields(it){const p=it.p,out=[];
+  for(const k of TYPES[it.type].f){if(k==='hinge'&&p.style!=='單開')continue;
+    if(p.tri&&(k==='W'||k==='H')){for(const s of ['1','2','3'])out.push(fieldHTML(k+s,p[k+s]));continue}
+    out.push(fieldHTML(k,p[k]))}
+  return out.join('');
+}
+function metricHTML(it){const m=metrics(it),p=it.p;
+  const main=m.canopy?`<span><b>${m.m2.toFixed(2)}</b>m²</span><span>${m.ping.toFixed(2)} 坪</span><span>板材 ${m.cells} 片（整片 ${m.full}、異形 ${m.cut}）</span><span>斜長 ${fmtLen(m.sl)}</span><span>斜度 ${m.ang.toFixed(1)}°</span>`
+    :`<span><b>${m.cai.toFixed(1)}</b>才</span><span>單${qtyUnit(it)} ${m.one.toFixed(1)} 才 × ${it.qty}</span>${p.tri?`<span class="info">下料尺寸 ${fmtLen(p.W)} × ${fmtLen(p.H)} ${unit}（三點取最小）</span>`:''}`;
+  const q=hasPrices()?itemQuote(it):null;
+  return main+(q&&q.price?`<span>報價 ${money(q.amt)}</span>`:'')+warnings(it).map(w=>`<span class="warn">${esc(w)}</span>`).join('');
+}
+function renderItem(p,it){
+  const idx=p.items.indexOf(it),t=TYPES[it.type],is3d=view.tab==='3d',isC=it.type==='canopy',tool=view.tool||'';
+  const aiPhotos=AI&&AIimg&&p.photos.length?`<p class="note" style="margin:0">點選要給 AI 看的現場照片（最多 ${Math.min(3,AIimg.maxCount)} 張）</p>
+      <div class="photos">${p.photos.map(id=>`<button class="ph${aiSel.has(id)?' sel':''}" data-act="aiPick" data-id="${id}" aria-pressed="${aiSel.has(id)}"><img data-pid="${id}" alt=""></button>`).join('')}</div>`:'';
+  app.innerHTML=bar(`<button class="back" data-act="toProject">‹ ${esc(p.name||'案場')}</button><div class="title">#${idx+1} ${t.n}</div>`)
+  +`<main>
+    <div class="tabs" role="tablist"><button class="${is3d?'':'on'}" data-act="tab" data-t="plan" role="tab" aria-selected="${!is3d}">平面圖</button><button class="${is3d?'on':''}" data-act="tab" data-t="3d" role="tab" aria-selected="${is3d}">3D</button></div>
+    ${is3d?`<div class="v3" id="v3"></div><div class="views"><button data-act="cam" data-v="iso">立體</button><button data-act="cam" data-v="front">正面</button><button data-act="cam" data-v="side">側面</button><button data-act="cam" data-v="top">俯視</button></div><p class="note">單指旋轉，雙指縮放。</p>`
+      :`${isC?`<div class="views" style="margin:0 0 8px;align-items:center"><span style="font-size:14px;color:var(--muted);font-weight:600">點格子：</span>${[['','檢視'],['void','挖空'],['hatch','維修孔'],['clear','清除']].map(([v,l])=>`<button class="${tool===v?'on':''}" data-act="tool" data-v="${v}">${l}</button>`).join('')}</div>`:''}<div class="paper" id="preview">${drawItem(it)}</div>${isC&&tool?'<p class="note">在俯視圖點格子即可標記，完成後按「檢視」。</p>':''}`}
+    <div class="metric" id="metric">${metricHTML(it)}</div>
+    <h2>${isC?'基本資料':`尺寸與規格（${unit}）`}</h2>
+    <div class="panel form">
+      <label class="fld"><span>位置</span><input data-if="loc" list="locs" value="${esc(it.loc)}" placeholder="例：客廳" autocomplete="off"></label>
+      <label class="fld"><span>數量（${qtyUnit(it)}）</span><div class="suf"><input inputmode="numeric" data-if="qty" value="${it.qty}"></div></label>
+      ${isC?'':formFields(it)}
+      <label class="fld full"><span>備註</span><textarea data-if="note" placeholder="例：外推、要做防水、舊窗框保留">${esc(it.note)}</textarea></label>
+    </div>
+    ${isC?canopyForm(it):''}
+    <datalist id="locs">${LOCS.map(l=>`<option value="${l}">`).join('')}</datalist>
+    <h2>AI 助手</h2>
+    <div class="panel"><div class="pad stack">
+      <button class="b" data-act="prompt">產生效果圖提示詞（搭配現場照片）</button>
+      ${AI?`${aiPhotos}<button class="b primary" data-act="aiCheck" id="aiBtn">AI 檢查這個項目</button>`:''}
+    </div><div class="ai-out" id="aiOut"></div></div>
+    <h2>操作</h2>
+    <div class="stack">
+      <div class="two"><button class="b primary" data-act="png">匯出圖片</button><button class="b" data-act="dxfOne">CAD 圖檔</button></div>
+      ${is3d?'<button class="b" data-act="shot3d">匯出 3D 截圖</button>':''}
+      <button class="b" data-act="dupItem">複製此項（同尺寸多樘時用）</button>
+      <button class="b ghost danger" data-act="delItem">刪除此項</button>
+    </div>
+  </main>`;
+  if(is3d)mount3D($('#v3'),it);
+  if(aiPhotos)loadThumbs(p);
+}
+let r3T=null;
+function refreshItem(){const it=curItem();if(!it)return;
+  const pv=$('#preview');if(pv)pv.innerHTML=drawItem(it);
+  if($('#v3')){clearTimeout(r3T);r3T=setTimeout(()=>{const box=$('#v3');if(box)mount3D(box,curItem())},500)}
+  $('#metric').innerHTML=metricHTML(it)}
+async function loadThumbs(p){for(const id of p.photos){const els=app.querySelectorAll(`img[data-pid="${id}"]`);if(!els.length)continue;
+  let d=photoCache.get(id);if(!d){d=await store.get('photo:'+id);if(d)photoCache.set(id,d)}if(d)els.forEach(el=>el.src=d)}}
+
+/* ---------- 設定 ---------- */
+function renderSettings(){
+  const s=settings,c=s.co;
+  const inp=(path,label,val,extra)=>`<label class="fld${extra&&extra.full?' full':''}"><span>${label}</span><input data-sf="${path}" value="${esc(val)}" ${extra&&extra.type?`type="${extra.type}"`:''} autocomplete="off"></label>`;
+  app.innerHTML=bar(`<button class="back" data-act="home">‹ 案場</button><div class="title">設定</div>`)
+  +`<main>
+    <h2>公司資料（印在 PDF 與 CAD 標題欄）</h2>
+    <div class="panel form">
+      <div class="fld full" style="flex-direction:row;gap:14px;align-items:center">
+        <label class="logo" for="logoIn">${s.logo?`<img src="${s.logo}" alt="公司標誌">`:'上傳<br>公司標誌'}</label>
+        <input type="file" id="logoIn" class="vh" accept="image/*">
+        <div style="flex:1;min-width:0">${inp('co.name','公司名稱',c.name)}</div>
+      </div>
+      ${inp('co.phone','電話',c.phone,{type:'tel'})}${inp('co.taxid','統一編號',c.taxid)}
+      ${inp('co.addr','公司地址',c.addr,{full:true})}
+      ${inp('co.line','LINE ID',c.line)}${inp('co.staff','丈量人員',c.staff)}
+      ${s.logo?'<button class="b ghost danger fld full" data-act="delLogo">移除標誌</button>':''}
+    </div>
+    <h2>尺寸單位</h2>
+    <div class="chips" style="margin-top:0">${['cm','mm'].map(u=>`<button class="chip${u===unit?' on':''}" data-act="unit" data-u="${u}">${u==='cm'?'公分 cm':'公釐 mm'}</button>`).join('')}</div>
+    <p class="note">CAD 圖檔固定以 mm 輸出，符合一般業者習慣。</p>
+    <h2>報價單價</h2>
+    <div class="panel">
+      ${Object.entries(TYPES).map(([k,v])=>`<div class="pricerow"><span>${v.n}<small style="color:var(--muted)">　每${k==='canopy'?'坪':'才'}</small></span><div class="suf"><input inputmode="numeric" data-sf="prices.${k}" data-num value="${+s.prices[k]||0}"><i>元</i></div></div>`).join('')}
+      <div class="pricerow"><span>門窗最低計價才數<small style="color:var(--muted)">　未滿以此計</small></span><div class="suf"><input inputmode="decimal" data-sf="minCai" data-num value="${+s.minCai||0}"><i>才</i></div></div>
+      <div class="pricerow"><span>報價加 5% 營業稅</span><label class="tog" style="border:0;background:transparent;padding:0;min-height:0;justify-self:end"><input type="checkbox" data-sf="tax" ${s.tax?'checked':''}></label></div>
+    </div>
+    <h2>PDF 內容</h2>
+    <div class="panel form">
+      <label class="fld tog"><span>附報價單</span><input type="checkbox" data-sf="pdfQuote" ${s.pdfQuote?'checked':''}></label>
+      <label class="fld tog"><span>附現場照片</span><input type="checkbox" data-sf="pdfPhotos" ${s.pdfPhotos?'checked':''}></label>
+      <label class="fld full"><span>報價條款</span><textarea data-sf="terms">${esc(s.terms)}</textarea></label>
+    </div>
+    <h2>備份與匯入</h2>
+    <div class="stack">
+      <button class="b primary" data-act="backupAll">備份全部資料（含照片）</button>
+      <label class="b" for="importIn" style="cursor:pointer">匯入備份檔</label>
+      <input type="file" id="importIn" class="vh" accept=".json,application/json">
+    </div>
+    <p class="note">共 ${projects.length} 個案場。換手機或清除 Safari 資料前，請先備份。</p>
+  </main>`;
+}
+
+/* ================= 事件 ================= */
+function setPath(obj,path,v){const ks=path.split('.');let o=obj;for(let i=0;i<ks.length-1;i++)o=o[ks[i]];o[ks[ks.length-1]]=v}
+function onField(e){const t=e.target;
+  if(e.type==='change'){
+    if(t.id==='photoIn'){addPhotos(Array.from(t.files||[]));t.value='';return}
+    if(t.id==='logoIn'){setLogo(t.files&&t.files[0]);t.value='';return}
+    if(t.id==='importIn'){importBackup(t.files&&t.files[0]);t.value='';return}
+  }
+  if(t.id==='q'){query=t.value;$('#plist').innerHTML=cardsHTML();return}
+  if(t.dataset.sf){let v=t.type==='checkbox'?t.checked:t.value;if(t.dataset.num!==undefined){v=parseFloat(v);if(!Number.isFinite(v)||v<0)return}
+    setPath(settings,t.dataset.sf,v);saveSettings();return}
+  if(t.dataset.pf){const p=cur();if(!p)return;const k=t.dataset.pf;
+    if(k==='extra'){const n=parseFloat(t.value);p.extra=Number.isFinite(n)?n:0;const q=$('#qtot');if(q&&hasPrices())q.innerHTML=quoteLine(quoteTotals(p))}
+    else p[k]=t.value;
+    if(k==='name'){const ti=$('.title');if(ti)ti.textContent=t.value||'未命名案場'}save();return}
+  const it=curItem();if(!it)return;
+  if(t.dataset.if){const k=t.dataset.if;
+    if(k==='qty'){const n=parseInt(t.value,10);if(!(n>0))return;it.qty=Math.min(n,999)}else it[k]=t.value;
+    if(k!=='note')refreshItem();save();return}
+  const p0=it.p;
+  if(t.dataset.pt){const [i,j]=t.dataset.pt.split('.').map(Number),v=parseLen(t.value);if(v==null||!p0.pts||!p0.pts[i])return;p0.pts[i][j]=v;save();refreshItem();return}
+  if(t.dataset.pw!==undefined){const i=+t.dataset.pw,s=new Set(p0.wallE||[]);t.checked?s.add(i):s.delete(i);p0.wallE=[...s];save();refreshItem();return}
+  if(t.dataset.post){const [i,j]=t.dataset.post.split('.').map(Number),v=parseLen(t.value);if(v==null||!p0.posts[i])return;p0.posts[i][j]=v;save();refreshItem();return}
+  if(t.dataset.ob){const [si,k]=t.dataset.ob.split('.'),o=p0.obs[+si];if(!o)return;
+    if(k==='type'){if(o.type===t.value)return;const T=obsType(t.value);o.type=T.n;o.mode=OBS_MODE[T.m];o.w=T.w;o.d=T.d||0;o.h=T.h||0;save();render();return}
+    if(k==='mode'||k==='note'){o[k]=t.value;save();if(k==='mode')refreshItem();return}
+    const v=parseLen(t.value);if(v==null)return;o[k]=v;save();refreshItem();return}
+  if(t.dataset.f){const k=t.dataset.f,f=FIELDS[k],p=it.p;let v;
+    if(f.t==='list'){v=String(t.value).split(/[,，、\s]+/).map(parseLen).filter(x=>x!=null&&x>0);if(JSON.stringify(v)===JSON.stringify(p[k]))return;p[k]=v;save();refreshItem();return}
+    if(f.t==='len'){v=parseLen(t.value);if(v==null||v<0)return}
+    else if(f.t==='int'){v=parseInt(t.value,10);if(!Number.isFinite(v))return;v=clamp(v,f.min,f.max)}
+    else if(f.t==='bool')v=t.checked;
+    else v=typeof f.o[0]==='number'?Number(t.value):t.value;
+    if(p[k]===v)return;
+    const prevShape=p.shape;
+    p[k]=v;
+    if(/^[WH][123]$/.test(k)){const key=k[0],vals=[p[key+'1'],p[key+'2'],p[key+'3']].map(Number).filter(x=>x>0);if(vals.length)p[key]=Math.min(...vals)}
+    if(k==='tri'&&v){for(const s of ['1','2','3']){p['W'+s]=p['W'+s]||p.W;p['H'+s]=p['H'+s]||p.H}}
+    if(k==='hlr'&&v){p.HbR=p.Hb;p.HfR=p.Hf}
+    if(k==='shape'&&v==='自訂'){const pr=presetPts({...p,shape:prevShape});p.pts=pr.pts.map(q=>q.map(Math.round));p.wallE=pr.wallE.slice()}
+    if(k==='postMode'&&v==='自訂位置'&&!(p.posts||[]).length){p.posts=canopyModel({...p,postMode:'自動'}).posts.map(q=>q.map(Math.round))}
+    save();
+    if(RERENDER.has(k)){render();return}
+    refreshItem()}
+}
+app.addEventListener('input',onField);
+app.addEventListener('change',onField);
+
+app.addEventListener('click',async e=>{
+  const cellEl=e.target.closest&&e.target.closest('[data-cell]');
+  if(cellEl&&view.tool&&curItem()){const ci=curItem(),mk=ci.p.marks||(ci.p.marks={}),key=cellEl.getAttribute('data-cell');
+    if(view.tool==='clear')delete mk[key];else mk[key]=mk[key]===view.tool?undefined:view.tool;if(mk[key]===undefined)delete mk[key];save();refreshItem();return}
+  const b=e.target.closest('[data-act]');if(!b)return;const a=b.dataset.act,p=cur(),it=curItem();
+  switch(a){
+    case 'home':return go('list');
+    case 'settings':return go('settings');
+    case 'unit':unit=b.dataset.u;try{localStorage.setItem('mw_unit',unit)}catch(err){}return render();
+    case 'newProject':{const np=normProject({id:uid(),name:'',date:today()});projects.unshift(np);save();return go('project',np.id)}
+    case 'openProject':return go('project',b.dataset.id);
+    case 'toProject':return go('project',view.pid);
+    case 'addItem':{const ni=newItem(b.dataset.t);p.items.push(ni);save();return go('item',p.id,ni.id)}
+    case 'openItem':return go('item',view.pid,b.dataset.id);
+    case 'tab':if(view.tab===b.dataset.t)return;dispose3D();view.tab=b.dataset.t;return render();
+    case 'cam':return V3&&V3.preset(b.dataset.v);
+    case 'tool':view.tool=b.dataset.v;return render();
+    case 'ptAdd':{const P=it.p.pts,n=P.length,a0=P[n-1],b0=P[0];P.push([Math.round((a0[0]+b0[0])/2),Math.round((a0[1]+b0[1])/2)]);if((it.p.wallE||[]).includes(n-1))it.p.wallE.push(n);save();return render()}
+    case 'ptDel':{const P=it.p.pts,i=+b.dataset.i;if(P.length<=3)return toast('至少要 3 個點');P.splice(i,1);it.p.wallE=(it.p.wallE||[]).filter(x=>x!==i).map(x=>x>i?x-1:x);it.p.marks={};save();return render()}
+    case 'ptReset':it.p.shape='矩形';it.p.marks={};save();return render();
+    case 'postAdd':{const M=canopyModel(it.p);it.p.posts.push([Math.round((M.x0+M.x1)/2),Math.round(M.y1)]);save();return render()}
+    case 'postDel':it.p.posts.splice(+b.dataset.i,1);save();return render();
+    case 'postAuto':it.p.posts=canopyModel({...it.p,postMode:'自動'}).posts.map(q=>q.map(Math.round));save();return render();
+    case 'obAdd':it.p.obs.push(newObs(b.dataset.t,it.p));save();render();return toast('已加入，請輸入實際位置');
+    case 'obDel':if(!await ask('刪除這個障礙物？'))return;it.p.obs.splice(+b.dataset.i,1);save();return render();
+    case 'dupItem':{const c=JSON.parse(JSON.stringify(it));c.id=uid();p.items.splice(p.items.indexOf(it)+1,0,c);save();go('item',p.id,c.id);return toast('已複製，可修改位置與尺寸')}
+    case 'delItem':if(!await ask('刪除這個項目？'))return;p.items=p.items.filter(i=>i.id!==view.iid);save();return go('project',p.id);
+    case 'delProject':if(!await ask('刪除整個案場與照片？刪除後無法復原。'))return;
+      for(const id of p.photos)await store.del('photo:'+id);projects=projects.filter(x=>x.id!==p.id);flush();return go('list');
+    case 'photo':{if(!await ask('刪除這張照片？'))return;const id=b.dataset.id;p.photos=p.photos.filter(x=>x!==id);photoCache.delete(id);await store.del('photo:'+id);save();return render()}
+    case 'aiPick':{const id=b.dataset.id,max=Math.min(3,AIimg?AIimg.maxCount:0);
+      if(aiSel.has(id))aiSel.delete(id);else{if(aiSel.size>=max)return toast(`最多選 ${max} 張`);aiSel.add(id)}
+      b.classList.toggle('sel',aiSel.has(id));b.setAttribute('aria-pressed',aiSel.has(id));return}
+    case 'delLogo':settings.logo=null;await refreshLogo();saveSettings();return render();
+    case 'pdf':return exportPDF();
+    case 'csv':return exportCSV();
+    case 'png':return exportPNG();
+    case 'dxf':return exportDXF(p.items);
+    case 'dxfOne':return exportDXF([it]);
+    case 'shot3d':{if(!V3)return toast('3D 還在載入');const bl=await V3.shot();if(bl)await saveFile(fname(p,`${p.items.indexOf(it)+1}_3D`,'png'),bl);return}
+    case 'backupOne':return backup([p]);
+    case 'backupAll':return backup(projects);
+    case 'prompt':return showPrompt(p,it);
+    case 'aiQuick':return aiQuick(p);
+    case 'aiCheck':return aiCheck(p,it);
+  }
+});
+
+/* ================= 照片與標誌 ================= */
+async function compress(file,max,q){const u=URL.createObjectURL(file);
+  try{const img=await loadImg(u);const s=Math.min(1,max/Math.max(img.naturalWidth,img.naturalHeight));
+    const c=document.createElement('canvas');c.width=Math.round(img.naturalWidth*s);c.height=Math.round(img.naturalHeight*s);
+    const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.drawImage(img,0,0,c.width,c.height);
+    const d=c.toDataURL('image/jpeg',q);c.width=c.height=0;return d}
+  finally{URL.revokeObjectURL(u)}}
+async function addPhotos(files){const p=cur();if(!p||!files.length)return;busy(true,'正在處理照片…');let fail=0;
+  try{for(const f of files){try{const d=await compress(f,1600,0.75);const id=uid();await store.set('photo:'+id,d);p.photos.push(id);photoCache.set(id,d)}catch(err){fail++}}
+    save();render();if(fail)toast(`${fail} 張照片無法讀取`)}
+  finally{busy(false)}}
+async function setLogo(file){if(!file)return;try{settings.logo=await compress(file,400,0.9);await refreshLogo();saveSettings();render()}catch(e){toast('標誌圖片無法讀取')}}
+/* ================= 匯出 ================= */
+let dlP=null;
+function useCap(name){return (window.claude&&typeof window.claude.use==='function')?window.claude.use(name).catch(()=>null):Promise.resolve(null)}
+function getDL(){if(!dlP)dlP=useCap('downloads');return dlP}
+async function saveFile(name,blob){
+  const dl=await getDL();
+  if(dl){try{await dl.save({filename:name,data:blob});toast('已匯出');return}
+    catch(err){const c=err&&err.code;if(c==='declined')return toast('已取消匯出');if(c==='rate_limited')return toast('請稍候再試一次');
+      if(c==='too_large')return toast('檔案太大，請減少照片後再試')}}
+  try{const file=new File([blob],name,{type:blob.type});
+    if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:name});return}}
+  catch(err){if(err&&err.name==='AbortError')return}
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500);
+}
+const safeName=s=>String(s||'').replace(/[\\/:*?"<>|\s]+/g,'_').slice(0,40);
+const fname=(p,suf,ext)=>`${safeName(p.name||'案場')}_${p.date||today()}_${safeName(suf)}.${ext}`;
+
+/* ---------- PDF：A4 150dpi，圖框 + 標題欄 ---------- */
+const PW=1240,PH=1754,INK='#1B2430',MUTED='#5D6B7A',TB=1496;
+const CF=(w,s)=>`${w} ${s}px "PingFang TC","Heiti TC","Noto Sans TC",-apple-system,sans-serif`;
+function newPage(){const c=document.createElement('canvas');c.width=PW;c.height=PH;const x=c.getContext('2d');x.fillStyle='#fff';x.fillRect(0,0,PW,PH);x.textBaseline='alphabetic';return [c,x]}
+function fit(x,s,w){s=String(s);if(x.measureText(s).width<=w)return s;while(s.length&&x.measureText(s+'…').width>w)s=s.slice(0,-1);return s+'…'}
+function lines(x,s,w){const out=[];for(const para of String(s).split('\n')){let l='';for(const ch of para){if(x.measureText(l+ch).width>w){out.push(l);l=ch}else l+=ch}out.push(l)}return out}
+function sheet(x,p,title,n,N){
+  const c=settings.co;
+  x.strokeStyle=INK;x.lineWidth=4;x.strokeRect(40,40,PW-80,PH-80);x.lineWidth=1.5;x.strokeRect(50,50,PW-100,PH-100);
+  x.lineWidth=2;x.beginPath();x.moveTo(50,TB);x.lineTo(PW-50,TB);x.moveTo(500,TB);x.lineTo(500,PH-50);x.moveTo(860,TB);x.lineTo(860,PH-50);x.stroke();
+  x.fillStyle='#F5C518';x.fillRect(50,TB,450,8);
+  x.fillStyle=INK;x.textAlign='left';
+  let tx=66;if(logoImg){const s=Math.min(104/logoImg.naturalWidth,104/logoImg.naturalHeight);const w=logoImg.naturalWidth*s,h=logoImg.naturalHeight*s;x.drawImage(logoImg,66+(104-w)/2,TB+30+(104-h)/2,w,h);tx=186}
+  x.font=CF(700,28);x.fillText(fit(x,c.name||'（到設定填公司名稱）',490-tx),tx,TB+62);
+  x.font=CF(500,19);x.fillStyle=MUTED;let yy=TB+96;
+  for(const s of [c.phone&&'電話 '+c.phone,c.addr,[c.taxid&&'統編 '+c.taxid,c.line&&'LINE '+c.line].filter(Boolean).join('　')].filter(Boolean)){x.fillText(fit(x,s,490-tx),tx,yy);yy+=28}
+  const lab=(l,v,X,Y,w)=>{x.fillStyle=MUTED;x.font=CF(500,18);x.fillText(l,X,Y);x.fillStyle=INK;x.font=CF(600,22);x.fillText(fit(x,v||'—',w),X+74,Y)};
+  lab('業主',p.name,516,TB+50,262);lab('電話',p.phone,516,TB+90,262);
+  x.fillStyle=MUTED;x.font=CF(500,18);x.fillText('工程地址',516,TB+130);x.fillStyle=INK;x.font=CF(600,21);
+  lines(x,p.addr||'—',330).slice(0,2).forEach((l,i)=>x.fillText(l,516,TB+160+i*28));
+  x.fillStyle=INK;x.font=CF(700,26);x.fillText(fit(x,title,310),876,TB+52);
+  lab('日期',p.date,876,TB+92,230);lab('單位',unit==='cm'?'公分 cm':'公釐 mm',876,TB+124,230);
+  lab('圖號',`${n} / ${N}`,876,TB+156,230);lab('丈量',c.staff,876,TB+188,230);
+}
+function svgImg(svg){return loadImg('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg))}
+function specRows(it){
+  const rows=[['位置',it.loc||'—'],['類型',TYPES[it.type].n],['數量',`${it.qty} ${qtyUnit(it)}`]],p=it.p,isC=it.type==='canopy',vis=isC?canopyVisible(p):null,lb=isC?canopyLabels(p):{};
+  for(const k of TYPES[it.type].f){if(k==='hinge'&&p.style!=='單開')continue;if(isC&&!vis.has(k))continue;const f=FIELDS[k],v=p[k];
+    if(f.t==='list'){if(v&&v.length)rows.push([f.l,v.map(fmtLen).join(', ')+' '+unit]);continue}
+    if(k==='heater'){if(v)rows.push(['燃氣熱水器','封閉範圍內有（須處理排氣）']);continue}
+    if(isC&&lb[k]){rows.push([lb[k],`${fmtLen(v)} ${unit}`]);continue}
+    if(k==='tri'){if(v)rows.push(['三點量測',`寬 ${fmtLen(p.W1)}/${fmtLen(p.W2)}/${fmtLen(p.W3)}　高 ${fmtLen(p.H1)}/${fmtLen(p.H2)}/${fmtLen(p.H3)}`]);continue}
+    rows.push([f.l.replace(/（.*?）/,''),f.t==='len'?(k==='transom'&&!v?'無':`${fmtLen(v)} ${unit}`):f.t==='bool'?(v?'有':'無'):(k==='posts'&&!v?'0（掛壁式）':String(v))])}
+  const m=metrics(it);
+  if(m.canopy)rows.push(['斜度 / 斜長',`${m.ang.toFixed(1)}° / ${fmtLen(m.sl)} ${unit}`],['面積',`${m.m2.toFixed(2)} m²（${m.ping.toFixed(2)} 坪）`],
+    ['板材',`${m.cells} 片（整片 ${m.full}、異形 ${m.cut}）`],['障礙物',`${it.p.obs.length} 項，開孔 ${m.holes} 處`]);
+  else rows.push(['才數',`${m.one.toFixed(1)} 才 / ${qtyUnit(it)}，合計 ${m.cai.toFixed(1)} 才`]);
+  return rows;
+}
+async function itemPage(p,it,n,N){
+  const [c,x]=newPage(),idx=p.items.indexOf(it);
+  sheet(x,p,it.loc?`${it.loc} ${TYPES[it.type].n}`:TYPES[it.type].n,n,N);
+  x.fillStyle=INK;x.font=CF(700,32);x.fillText(fit(x,`#${idx+1}　${it.loc||'未填位置'}　${TYPES[it.type].n}　× ${it.qty} ${qtyUnit(it)}`,1080),80,110);
+  const rows=specRows(it),isC=it.type==='canopy',rh=isC?34:38,need=Math.ceil(rows.length/2)*rh+(isC?20:90);
+  const bx=80,by=132,bw=1080,bh=Math.max(520,Math.min(isC?900:800,TB-40-need-by-42)),d=build(it),b=d.bounds(),s=Math.min((bw-30)/b.w,(bh-30)/b.h),dw=Math.round(b.w*s),dh=Math.round(b.h*s);
+  const img=await svgImg(toSVG(d,dw,dh));x.drawImage(img,bx+(bw-dw)/2,by+(bh-dh)/2,dw,dh);
+  x.strokeStyle='#CBD2D9';x.lineWidth=1.5;x.strokeRect(bx,by,bw,bh);
+  let y=by+bh+42;const cw=bw/2;
+  rows.forEach((r,i)=>{const cx=bx+(i%2)*cw,cy=y+Math.floor(i/2)*rh;if(cy>TB-14)return;
+    x.fillStyle=MUTED;x.font=CF(500,isC?18:20);x.fillText(fit(x,r[0],150),cx,cy);x.fillStyle=INK;x.font=CF(600,isC?20:22);x.fillText(fit(x,r[1],cw-175),cx+160,cy)});
+  y+=Math.ceil(rows.length/2)*rh+6;
+  for(const w of isC?[]:warnings(it)){if(y>TB-20)break;x.fillStyle='#B42318';x.font=CF(600,20);x.fillText(fit(x,'⚠ '+w,bw),bx,y);y+=32}
+  if(it.note){x.fillStyle=INK;x.font=CF(500,21);for(const l of lines(x,'備註：'+it.note,bw)){if(y>TB-20)break;x.fillText(l,bx,y);y+=32}}
+  return c;
+}
+const ROWS_SUM=24,ROWS_Q=18;
+function tableHead(x,y,cols){x.fillStyle='#EEF1F4';x.fillRect(80,y,1080,48);x.fillStyle=MUTED;x.font=CF(600,20);for(const [cx,h] of cols)x.fillText(h,80+cx+10,y+32);return y+48}
+function summaryPage(p,chunk,start,n,N,last){
+  const [c,x]=newPage();sheet(x,p,'項目總表',n,N);
+  x.fillStyle=INK;x.font=CF(700,32);x.fillText('項目總表',80,110);
+  const cols=[[0,'#',56],[56,'位置',220],[276,'類型',150],[426,`尺寸（${unit}）`,250],[676,'規格',250],[926,'才 / 面積',154]];
+  let y=tableHead(x,134,cols);
+  chunk.forEach((it,i)=>{const pp=it.p,sp=it.type==='canopy'?pp.panel:`${pp.series||''} ${pp.glass||''}`.trim()||pp.color;
+    const cells=[String(start+i+1),it.loc||'—',`${TYPES[it.type].n}×${it.qty}`,sizeText(it).replace(/ /g,''),sp,amountText(it)];
+    x.fillStyle=INK;x.font=CF(500,21);cols.forEach(([cx,,w],j)=>x.fillText(fit(x,cells[j],w-18),80+cx+10,y+33));
+    y+=50;x.fillStyle='#E3E7EB';x.fillRect(80,y-1,1080,1)});
+  if(last){const t=totals(p);y+=46;x.fillStyle=INK;x.font=CF(700,26);
+    x.fillText(`門窗合計 ${t.cai.toFixed(1)} 才　　採光罩合計 ${t.m2.toFixed(2)} m²（${(t.m2/3.3058).toFixed(2)} 坪）`,80,y);y+=50;
+    if(p.note){x.font=CF(500,22);for(const l of lines(x,'案場備註：'+p.note,1080)){if(y>TB-20)break;x.fillText(l,80,y);y+=34}}}
+  return c;
+}
+function quotePage(p,chunk,start,n,N,last){
+  const [c,x]=newPage();sheet(x,p,'報價單',n,N);
+  x.fillStyle=INK;x.font=CF(700,32);x.fillText('報價單',80,110);x.font=CF(500,20);x.fillStyle=MUTED;x.textAlign='right';x.fillText(`報價日期 ${today()}`,1160,110);x.textAlign='left';
+  const cols=[[0,'#',50],[50,'項目',400],[450,'數量',110],[560,'計價',170],[730,'單價',150],[880,'小計',200]];
+  let y=tableHead(x,134,cols);
+  chunk.forEach((it,i)=>{const q=itemQuote(it);
+    const cells=[String(start+i+1),`${it.loc?it.loc+' ':''}${specText(it)}`,`${it.qty} ${qtyUnit(it)}`,`${q.q.toFixed(q.u==='坪'?2:1)} ${q.u}`,q.price?q.price.toLocaleString('zh-TW'):'—',q.amt.toLocaleString('zh-TW')];
+    x.fillStyle=INK;x.font=CF(500,20);cols.forEach(([cx,,w],j)=>{if(j>=4){x.textAlign='right';x.fillText(cells[j],80+cx+w-10,y+33);x.textAlign='left'}else x.fillText(fit(x,cells[j],w-18),80+cx+10,y+33)});
+    y+=50;x.fillStyle='#E3E7EB';x.fillRect(80,y-1,1080,1)});
+  if(last){const qt=quoteTotals(p);y+=16;
+    const row=(l,v,bold)=>{x.fillStyle=bold?INK:MUTED;x.font=CF(bold?700:500,bold?28:22);x.textAlign='right';x.fillText(l,900,y+30);x.fillStyle=INK;x.fillText(v,1150,y+30);x.textAlign='left';y+=bold?50:40};
+    if(+p.extra)row(`其他費用${p.extraNote?'（'+p.extraNote+'）':''}`,money(+p.extra));
+    row('小計',money(qt.sub));if(settings.tax)row('營業稅 5%',money(qt.tax));row('總計',money(qt.total),true);
+    y+=20;x.fillStyle=INK;x.font=CF(600,21);x.fillText('報價說明',80,y);y+=34;x.font=CF(500,20);x.fillStyle=MUTED;
+    for(const l of lines(x,settings.terms||'',1080)){if(y>TB-90)break;x.fillText(l,80,y);y+=30}
+    x.fillStyle=INK;x.font=CF(500,22);x.fillText('客戶簽認：＿＿＿＿＿＿＿＿＿＿　　日期：＿＿＿＿＿＿',80,TB-36)}
+  return c;
+}
+function bomPage(p,it,n,N){
+  const [c,x]=newPage(),idx=p.items.indexOf(it),M=canopyModel(it.p);sheet(x,p,`${it.loc?it.loc+' ':''}材料明細`,n,N);
+  x.fillStyle=INK;x.font=CF(700,30);x.fillText(fit(x,`#${idx+1}　${it.loc||''}　採光罩　材料明細`,1080),80,110);
+  x.font=CF(500,19);x.fillStyle=MUTED;x.fillText('依丈量資料估算，下料前請依現場與工廠規格確認。',80,142);
+  let y=186;
+  for(const [l,v] of canopyBOM(it)){if(y>TB-60)break;x.fillStyle=MUTED;x.font=CF(600,21);x.fillText(l,80,y);x.fillStyle=INK;x.font=CF(500,21);
+    const ls=lines(x,v,850);ls.slice(0,4).forEach((t,i)=>x.fillText(t,300,y+i*30));y+=Math.min(ls.length,4)*30+14;x.fillStyle='#E3E7EB';x.fillRect(80,y-20,1080,1)}
+  if(M.obs.length&&y<TB-120){y+=10;x.fillStyle=INK;x.font=CF(700,24);x.fillText('障礙物與預留',80,y);y+=36;
+    for(const o of M.obs){if(y>TB-30)break;const T=obsType(o.type);
+      const pos=T.k==='wall'?`X ${fmtLen(o.x)}、離地 ${fmtLen(o.h)}、${fmtLen(o.w)}×${fmtLen(o.d)}`:T.k==='pipe'?`X ${fmtLen(o.x)}、Y ${fmtLen(o.y)}、管徑 ${fmtLen(o.w)}`:`X ${fmtLen(o.x)}、Y ${fmtLen(o.y)}、${fmtLen(o.w)}×${fmtLen(o.d)}`;
+      x.font=CF(500,20);x.fillStyle=INK;x.fillText(fit(x,`#${o.no} ${o.type}｜${o.mode}｜${pos} ${unit}${o.note?'｜'+o.note:''}`,1080),80,y);y+=32}}
+  const w=warnings(it);if(w.length&&y<TB-60){y+=10;x.fillStyle='#B42318';x.font=CF(600,20);for(const t of w){if(y>TB-24)break;x.fillText(fit(x,'⚠ '+t,1080),80,y);y+=30}}
+  return c;
+}
+async function photoPage(p,ids,n,N){
+  const [c,x]=newPage();sheet(x,p,'現場照片',n,N);x.fillStyle=INK;x.font=CF(700,32);x.fillText('現場照片',80,110);
+  const bw=1080,bh=(TB-150-40)/2-10;
+  for(let i=0;i<ids.length;i++){const d=await store.get('photo:'+ids[i]);if(!d)continue;const img=await loadImg(d);
+    const s=Math.min(bw/img.naturalWidth,bh/img.naturalHeight),w=img.naturalWidth*s,h=img.naturalHeight*s,yy=140+i*(bh+20);
+    x.drawImage(img,80+(bw-w)/2,yy+(bh-h)/2,w,h)}
+  return c;
+}
+const chunks=(a,n)=>{const o=[];for(let i=0;i<a.length;i+=n)o.push(a.slice(i,i+n));return o};
+async function exportPDF(){
+  const p=cur();if(!p)return;if(!p.items.length)return toast('請先新增至少一個項目');
+  if(!window.jspdf||!window.jspdf.jsPDF)return toast('PDF 元件沒有載入，請連上網路後重新開啟');
+  busy(true,'正在產生 PDF…');
+  try{
+    const sum=chunks(p.items,ROWS_SUM),qo=settings.pdfQuote&&hasPrices()?chunks(p.items,ROWS_Q):[],ph=settings.pdfPhotos?chunks(p.photos,2):[];
+    const nb=p.items.filter(it=>it.type==='canopy').length,N=sum.length+qo.length+p.items.length+nb+ph.length;let n=0;
+    const doc=new window.jspdf.jsPDF({unit:'pt',format:'a4',compress:true});
+    const add=cv=>{if(n>1)doc.addPage();doc.addImage(cv.toDataURL('image/jpeg',0.88),'JPEG',0,0,595.28,841.89);cv.width=cv.height=0};
+    for(let i=0;i<sum.length;i++){n++;add(summaryPage(p,sum[i],i*ROWS_SUM,n,N,i===sum.length-1))}
+    for(let i=0;i<qo.length;i++){n++;add(quotePage(p,qo[i],i*ROWS_Q,n,N,i===qo.length-1))}
+    for(const it of p.items){n++;busy(true,`正在產生 PDF…（${n}/${N}）`);add(await itemPage(p,it,n,N));if(it.type==='canopy'){n++;add(bomPage(p,it,n,N))}}
+    for(const ch of ph){n++;add(await photoPage(p,ch,n,N))}
+    const blob=doc.output('blob');busy(false);await saveFile(fname(p,'施工圖','pdf'),blob);
+  }catch(err){toast('匯出失敗：'+(err&&err.message||err))}
+  finally{busy(false)}
+}
+async function exportPNG(){
+  const p=cur(),it=curItem();if(!it)return;busy(true,'正在產生圖片…');
+  try{const cv=await itemPage(p,it,p.items.indexOf(it)+1,p.items.length);const blob=await new Promise(r=>cv.toBlob(r,'image/png'));cv.width=cv.height=0;
+    busy(false);if(!blob)throw new Error('圖片產生失敗');await saveFile(fname(p,`${p.items.indexOf(it)+1}_${it.loc||TYPES[it.type].n}`,'png'),blob)}
+  catch(err){toast('匯出失敗：'+(err&&err.message||err))}
+  finally{busy(false)}
+}
+function exportCSV(){
+  const p=cur();if(!p)return;if(!p.items.length)return toast('請先新增至少一個項目');
+  const q=v=>`"${String(v??'').replace(/"/g,'""')}"`;
+  const head=['編號','位置','類型',`寬或長(${unit})`,`高或深(${unit})`,'數量','系列或板材','玻璃','顏色','其他規格','才數','面積m2','報價','備註'];
+  const rows=p.items.map((it,i)=>{const x=it.p,m=metrics(it),amt=hasPrices()?itemQuote(it).amt:'';
+    if(it.type==='canopy'){const M=canopyModel(x);return [i+1,it.loc,'採光罩',fmtLen(M.Lx),fmtLen(M.y1),it.qty,x.panel,'',x.color,
+      `${x.shape} 後高${fmtLen(M.Hb)} 前高${fmtLen(M.Hf)} 立柱${M.posts.length} ${x.frame} ${x.drain} 斜度${m.ang.toFixed(1)}° 板材${m.cells}片(異形${m.cut}) 開孔${m.holes} 出簷${fmtLen(x.ovF)}`,'',m.m2.toFixed(2),amt,it.note]}
+    return [i+1,it.loc,TYPES[it.type].n,fmtLen(x.W),fmtLen(x.H),it.qty,x.series||'',x.glass||'',x.color,specText(it),m.cai.toFixed(1),'',amt,it.note]});
+  const meta=[['業主',p.name],['電話',p.phone],['地址',p.addr],['日期',p.date],[]];
+  const csv='\uFEFF'+[...meta,head,...rows].map(r=>r.map(q).join(',')).join('\r\n');
+  saveFile(fname(p,'清單','csv'),new Blob([csv],{type:'text/csv'}));
+}
+async function exportDXF(items){
+  const p=cur();if(!p||!items.length||!items[0])return toast('請先新增至少一個項目');
+  busy(true,'正在產生 CAD 圖檔…');
+  try{const files=withUnit('mm',()=>items.map(it=>{const d=build(it),i=p.items.indexOf(it)+1;
+      addSheet(d,{co:settings.co,p,title:`#${i} ${it.loc||''} ${TYPES[it.type].n}`.replace(/\s+/g,' '),no:`${i}/${p.items.length}`});
+      return {name:`${String(i).padStart(2,'0')}_${safeName(it.loc||TYPES[it.type].n)}_${TYPES[it.type].n}.dxf`,data:toDXF(d)}}));
+    files.push({name:'說明.txt',data:'本資料夾為 DXF (R12) 圖檔，單位 mm，可用 AutoCAD、DWG FastView、LibreCAD 開啟。\r\n中文字型使用 chineset.shx，若顯示問題請於 CAD 中改用系統中文字型。\r\n'});
+    const blob=makeZip(files);busy(false);
+    await saveFile(fname(p,items.length===1?`${p.items.indexOf(items[0])+1}_CAD`:'CAD圖檔','zip'),blob)}
+  catch(err){toast('匯出失敗：'+(err&&err.message||err))}
+  finally{busy(false)}
+}
+
+/* ---------- 備份 / 匯入 ---------- */
+async function backup(list){
+  if(!list.length)return toast('沒有可備份的案場');busy(true,'正在打包備份…');
+  try{const photos={};for(const p of list)for(const id of p.photos){const d=await store.get('photo:'+id);if(d)photos[id]=d}
+    const data={app:'mw-measure',v:2,at:new Date().toISOString(),projects:list,photos,settings:list===projects?settings:undefined};
+    const blob=new Blob([JSON.stringify(data)],{type:'application/json'});busy(false);
+    await saveFile(list.length===1?fname(list[0],'備份','json'):`門窗丈量_全部備份_${today()}.json`,blob)}
+  catch(err){toast('備份失敗：'+(err&&err.message||err))}
+  finally{busy(false)}
+}
+async function importBackup(file){
+  if(!file)return;busy(true,'正在匯入…');
+  try{const data=JSON.parse(await file.text());
+    if(!data||data.app!=='mw-measure'||!Array.isArray(data.projects))throw new Error('這不是門窗丈量的備份檔');
+    let add=0,rep=0;
+    for(const [id,d] of Object.entries(data.photos||{}))if(typeof d==='string'&&d.startsWith('data:image/'))await store.set('photo:'+id,d);
+    for(const raw of data.projects){if(!raw||!raw.id||!Array.isArray(raw.items))continue;const np=normProject(raw);
+      np.items=np.items.filter(it=>it&&TYPES[it.type]&&it.p);
+      const i=projects.findIndex(x=>x.id===np.id);if(i>=0){projects[i]=np;rep++}else{projects.unshift(np);add++}}
+    if(data.settings&&!settings.co.name){settings=mergeSettings(data.settings);await refreshLogo();saveSettings()}
+    flush();busy(false);toast(`已匯入：新增 ${add} 個、更新 ${rep} 個案場`);go('list')}
+  catch(err){busy(false);toast('匯入失敗：'+(err&&err.message||err))}
+}
+/* ================= AI ================= */
+function effectDesc(it){const p=it.p,m=metrics(it),M=v=>(Math.round((+v||0)/10)/100);
+  if(it.type==='canopy'){const C=canopyModel(p),encs=C.enc.map(e=>`${({front:'前面',left:'左側',right:'右側'})[e.e.kind]}${e.t}`).join('、');
+    return `在房屋外牆加裝一座鋁製採光罩：${p.shape==='矩形'?'':`外形為${p.shape}（不規則平面），`}沿牆長約 ${M(C.Lx)} 公尺、向外出挑約 ${M(C.y1)} 公尺，靠牆高度 ${M(C.Hb)} 公尺、前端高度 ${M(C.Hf)} 公尺，斜度約 ${m.ang.toFixed(0)} 度。${p.frame}，顏色${p.color}，屋面為${p.panel}，一格一格分割，${C.posts.length?`${C.posts.length} 支立柱`:'掛壁式、沒有立柱'}${+p.ovF?`，前緣出簷約 ${Math.round(p.ovF/10)} 公分`:''}${p.gutter?'，前緣有鋁製排水溝與落水管':''}${encs?`，${encs}封起來（類似玻璃屋）`:''}。`}
+  const ex=it.type==='slide'?`${p.panels} 扇橫拉`:it.type==='fixed'?`${p.cols}×${p.rows} 分割固定`:it.type==='casement'?`${p.sash} 扇${p.dir}`:it.type==='louver'?'鋁百葉':p.style;
+  return `在牆面開口安裝${p.color}鋁框${p.series?p.series:''}${TYPES[it.type].n}（${ex}），寬 ${M(p.W)} 公尺、高 ${M(p.H)} 公尺${p.glass?`，玻璃為${p.glass}`:''}${p.screen?'，附紗窗':''}。`}
+function showPrompt(p,it){
+  const d=effectDesc(it);
+  const txt=`【照片合成版｜請同時上傳現場照片】\n請以我上傳的現場照片為底圖，保持原本的建築、拍攝角度與光線不變，${d}\n要求：寫實照片風格、比例正確、鋁材金屬質感與玻璃反光真實，不要改動其他物件，不要加任何文字或浮水印。\n\n【純文字版】\n一張台灣透天住宅的寫實建築攝影，${d}白天自然光，構圖清楚，像專業施工完成照。`;
+  const m=modal(`<p><b>效果圖提示詞</b><br><span style="font-size:14px;color:var(--muted)">複製後貼到 ChatGPT 或 Gemini，照片合成版要一起上傳現場照片。</span></p>
+    <textarea readonly id="ptxt">${esc(txt)}</textarea><div class="sheet-row"><button class="b" data-r="close">關閉</button><button class="b primary" data-r="copy">複製</button></div>`,
+    (e,mm)=>{const b=e.target.closest('[data-r]');if(!b)return;if(b.dataset.r==='copy')copyText(txt);else mm.remove()});
+}
+function aiErr(err){const c=err&&err.code;
+  if(c==='not_granted')return 'AI 功能未獲授權。';
+  if(c==='rate_limited')return 'AI 使用太頻繁，請稍後再試。';
+  if(c==='cancelled')return '已停止。';
+  if(c==='invalid_json')return 'AI 回覆格式不正確，請把描述寫清楚一點再試一次。';
+  return 'AI 暫時無法使用：'+(err&&err.message||err)}
+async function aiQuick(p){
+  const ta=$('#aiQuick'),txt=(ta&&ta.value||'').trim();if(!txt)return toast('先輸入要新增的項目描述');
+  const spec=Object.entries(TYPES).map(([k,t])=>`${k}（${t.n}）: ${t.f.filter(f=>f!=='tri'&&['len','int','sel','bool'].includes(FIELDS[f].t)).map(f=>{const F=FIELDS[f];return F.t==='sel'?`${f}(${F.o.join('|')})`:F.t==='bool'?`${f}(true|false)`:`${f}(${F.t==='len'?'mm整數':'整數'})`}).join(', ')}`).join('\n');
+  const prompt=`你是台灣鋁門窗與採光罩的丈量助手。把使用者的口語描述轉成項目清單。
+規則：
+- 長度一律換算成 mm 整數。使用者沒寫單位時，數字單位是「${unit==='cm'?'公分':'公釐'}」；寫「米」「公尺」要換算；「90乘60」代表寬90、高60。
+- 採光罩：長=沿牆長度 L，深=出挑 D，後高=靠牆高 Hb，前高=前端高 Hf；有缺角時 shape="缺角" 並填 nc、nw、nd；前面封玻璃 encF="固定玻璃"。
+- 選項欄位只能用括號內的值，沒提到的欄位不要填。
+- loc 是位置（如客廳、主臥），qty 是數量，沒說就是 1。
+可用類型與欄位：
+${spec}
+只回覆 JSON 陣列，範例：[{"type":"slide","loc":"客廳","qty":1,"note":"","p":{"W":1800,"H":1200,"panels":2,"series":"氣密窗"}}]
+使用者描述：
+${txt}`;
+  const btn=app.querySelector('[data-act="aiQuick"]');if(btn){btn.disabled=true;btn.textContent='AI 解析中…'}
+  try{const out=await AI.json(prompt,{modelTier:'quick'});
+    const arr=Array.isArray(out)?out:(out&&Array.isArray(out.items)?out.items:[]);let n=0;
+    for(const r of arr){if(!r||!TYPES[r.type])continue;const it=newItem(r.type);
+      it.loc=String(r.loc||'').slice(0,30);it.note=String(r.note||'').slice(0,200);it.qty=clamp(parseInt(r.qty,10)||1,1,999);
+      const src=r.p||{};
+      for(const k of TYPES[r.type].f){if(!(k in src))continue;const F=FIELDS[k],v=src[k];
+        if(F.t==='len'){const n2=Math.round(+v);if(n2>0&&n2<30000)it.p[k]=n2}
+        else if(F.t==='int'){const n2=parseInt(v,10);if(Number.isFinite(n2))it.p[k]=clamp(n2,F.min,F.max)}
+        else if(F.t==='bool')it.p[k]=!!v;
+        else{const hit=F.o.find(o=>String(o)===String(v));if(hit!==undefined)it.p[k]=hit}}
+      p.items.push(it);n++}
+    if(!n){toast('沒有辨識到項目，請描述類型與尺寸');return}
+    save();render();toast(`已新增 ${n} 個項目，請逐一確認尺寸`)}
+  catch(err){toast(aiErr(err))}
+  finally{const b=app.querySelector('[data-act="aiQuick"]');if(b){b.disabled=false;b.textContent='AI 轉成項目'}}
+}
+async function aiCheck(p,it){
+  const out=$('#aiOut'),btn=$('#aiBtn');
+  if(aiCtl){aiCtl.abort();aiCtl=null;return}
+  const data={類型:TYPES[it.type].n,位置:it.loc,數量:it.qty,備註:it.note,規格:specRows(it).map(r=>r.join('：')).join('；'),系統提醒:warnings(it)};
+  if(it.type==='canopy'){data.材料明細=canopyBOM(it).map(r=>r.join('：')).join('；');data.障礙物=(it.p.obs||[]).map(o=>`${o.type}/${o.mode}/${o.note||''}`)}
+  const imgs=[];for(const id of aiSel){const d=photoCache.get(id)||await store.get('photo:'+id);if(d)imgs.push(dataURLtoBlob(d))}
+  const prompt=`你是台灣資深鋁門窗與採光罩師傅，正在幫同行檢查現場丈量資料。請用繁體中文、條列、精簡回答（300 字內），分成四段：
+一、可能漏量或需要再確認的尺寸
+二、施工風險（防水、結構、颱風、鄰房或違建疑慮只需提醒）
+三、規格建議
+四、給工廠下料的注意事項
+案場：${p.addr||'未填'}；案場備註：${p.note||'無'}
+項目資料：${JSON.stringify(data)}
+${imgs.length?`另附 ${imgs.length} 張現場照片，請判讀牆面、開口、周邊狀況後一併給建議。`:'沒有附照片。'}`;
+  aiCtl=new AbortController();btn.textContent='停止';out.textContent='思考中…';
+  try{await AI(prompt,{signal:aiCtl.signal,images:imgs.length?imgs:undefined,onText:({text})=>{out.textContent=text}})}
+  catch(err){out.textContent=(err&&err.text?err.text+'\n\n':'')+aiErr(err)}
+  finally{aiCtl=null;const b=$('#aiBtn');if(b)b.textContent='AI 檢查這個項目'}
+}
+
+/* ================= 啟動 ================= */
+(async()=>{
+  await store.open();
+  const [s,ps]=await Promise.all([store.get('settings'),store.get('projects')]);
+  settings=mergeSettings(s);if(Array.isArray(ps))projects=ps.map(normProject);
+  await refreshLogo();
+  getDL();
+  const sp=useCap('sample');
+  AI=await Promise.race([sp,new Promise(r=>setTimeout(()=>r(null),2500))]);
+  if(AI){try{const lim=await AI.limits();AIimg=lim&&lim.images||null}catch(e){AIimg=null}}
+  render();
+  if(!AI)sp.then(async a=>{if(!a)return;AI=a;try{const lim=await a.limits();AIimg=lim&&lim.images||null}catch(e){}
+    const ae=document.activeElement;if(!ae||!/INPUT|TEXTAREA|SELECT/.test(ae.tagName))render()});
+})();
+})();
+</script>
+</body>
+</html>
