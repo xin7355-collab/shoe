@@ -1436,7 +1436,8 @@ async function backup(list){
   finally{busy(false)}
 }
 async function importBackup(file){
-  if(!file)return;if(file.size>400*1024*1024)return toast('備份檔超過 400 MB，這支手機可能記憶體不足，請改用電腦匯入');busy(true,'正在匯入…');
+  if(!file)return;/* JSON.parse 需要「整份文字＋解析後物件」同時在記憶體，峰值約檔案大小 2～3 倍；iPhone 分頁約 1GB 就會被砍，所以上限抓 150 MB */
+  if(file.size>150*1024*1024)return toast('備份檔超過 150 MB，iPhone 可能記憶體不足而當掉。請改用「備份這個案場」分批匯入，或用電腦匯入');busy(true,'正在匯入…');
   try{const data=JSON.parse(await file.text());
     if(!data||data.app!=='mw-measure'||!Array.isArray(data.projects))throw new Error('這不是丈量大師（門窗丈量）的備份檔');
     let add=0,rep=0;

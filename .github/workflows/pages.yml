@@ -18,6 +18,8 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # 正常 1 分鐘內跑完；卡住時 10 分鐘就砍，不讓預設 6 小時燒分鐘數
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - name: Check JS syntax

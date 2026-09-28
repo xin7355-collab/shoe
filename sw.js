@@ -2,7 +2,7 @@
  * - 自家檔案（index.html 等）：網路優先，失敗才用快取 → 有網路時永遠拿到最新版。
  * - CDN 函式庫（jsPDF、three.js、字型）：快取優先 → 下載一次後離線可用。
  * 改版時把 VERSION +1，舊快取會在 activate 時清掉。 */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CORE = `core-${VERSION}`;
 const CDN = `cdn-${VERSION}`;
 const CORE_FILES = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
@@ -12,12 +12,23 @@ const CDN_WARM = [
 ];
 const CDN_HOSTS = ['cdnjs.cloudflare.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 
+/* CDN 預熱：工地訊號差時第一次常失敗，失敗就等 2/4/8 秒重試（最多 4 次），
+ * 仍失敗就放棄——使用者下次連網用到 PDF／3D 時，fetch 事件會再補進快取。
+ * 放在 claim 之後才做，不拖慢新版接手。逐一下載，不併發，避免瞬間塞爆弱網路。 */
+async function warmCDN() {
+  const c = await caches.open(CDN);
+  for (const u of CDN_WARM) {
+    if (await c.match(u)) continue;
+    for (let attempt = 0; attempt < 4; attempt++) {
+      try { const r = await fetch(u, { mode: 'cors' }); if (r.ok) { await c.put(u, r); break; } if (r.status < 500 && r.status !== 429) break; } catch (err) {}
+      if (attempt < 3) await new Promise(res => setTimeout(res, 2000 * 2 ** attempt)); // backoff 2/4/8 秒
+    }
+  }
+}
+
 self.addEventListener('install', e => {
   e.waitUntil((async () => {
     await (await caches.open(CORE)).addAll(CORE_FILES);
-    // CDN 預熱逐一下載、失敗略過，不讓單一檔案拖垮安裝
-    const c = await caches.open(CDN);
-    for (const u of CDN_WARM) { try { const r = await fetch(u, { mode: 'cors' }); if (r.ok) await c.put(u, r); } catch (err) {} }
     await self.skipWaiting();
   })());
 });
@@ -26,6 +37,7 @@ self.addEventListener('activate', e => {
   e.waitUntil((async () => {
     for (const k of await caches.keys()) if (k !== CORE && k !== CDN) await caches.delete(k);
     await self.clients.claim();
+    await warmCDN();
   })());
 });
 
