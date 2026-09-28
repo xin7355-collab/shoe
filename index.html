@@ -4,9 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="門窗丈量">
+<meta name="apple-mobile-web-app-title" content="丈量大師">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="description" content="丈量大師：門窗與採光罩現場丈量、施工圖、CAD、報價一次完成，可離線使用。">
 <meta name="theme-color" content="#F5C518">
-<title>門窗丈量</title>
+<meta name="robots" content="noindex, nofollow">
+<title>丈量大師</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
@@ -217,7 +221,7 @@ const LOCS=['客廳','主臥','次臥','小孩房','書房','廚房','浴室','�
 const DEF_SETTINGS={co:{name:'',phone:'',addr:'',taxid:'',line:'',staff:''},logo:null,
   prices:{slide:0,fixed:0,casement:0,louver:0,door:0,canopy:0},minCai:0,tax:false,
   terms:'1. 本報價有效期限 30 天。\n2. 尺寸以現場丈量為準，下單後依實際尺寸計價。\n3. 訂金 30%，完工驗收後付清尾款。',
-  pdfQuote:true,pdfPhotos:true};
+  pdfQuote:true,pdfPhotos:true,wake:true,lastBackup:''};
 
 /* ================= 工具 ================= */
 const $=s=>document.querySelector(s);
@@ -238,6 +242,7 @@ function modal(html,onClick){const m=document.createElement('div');m.className='
   m.innerHTML=`<div class="sheet-box" role="dialog" aria-modal="true">${html}</div>`;
   m.addEventListener('click',e=>{if(e.target===m){m.remove();return}onClick&&onClick(e,m)});
   document.body.appendChild(m);return m}
+document.addEventListener('keydown',e=>{if(e.key!=='Escape')return;const ms=document.querySelectorAll('.sheet');const m=ms[ms.length-1];if(m)m.dispatchEvent(new MouseEvent('click',{bubbles:false}))});
 function ask(msg,ok){return new Promise(res=>{
   const m=modal(`<p>${esc(msg)}</p><div class="sheet-row"><button class="b" data-r="0">取消</button><button class="b danger" data-r="1">${esc(ok||'刪除')}</button></div>`,
     (e,mm)=>{const b=e.target.closest('[data-r]');if(!b)return;mm.remove();res(b.dataset.r==='1')});
@@ -260,7 +265,9 @@ const store={db:null,mem:new Map(),
     r.onsuccess=()=>{this.db=r.result;res(true)};r.onerror=()=>res(false);r.onblocked=()=>res(false);
   }catch(e){res(false)}})},
   get(k){if(!this.db)return Promise.resolve(this.mem.get(k));return new Promise(res=>{try{const q=this.db.transaction('kv').objectStore('kv').get(k);q.onsuccess=()=>res(q.result);q.onerror=()=>res(undefined)}catch(e){res(undefined)}})},
-  set(k,v){if(!this.db){this.mem.set(k,v);return Promise.resolve(false)}return new Promise(res=>{try{const tx=this.db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false)}catch(e){res(false)}})},
+  set(k,v){if(!this.db){this.mem.set(k,v);return Promise.resolve(false)}return new Promise(res=>{try{const tx=this.db.transaction('kv','readwrite');tx.objectStore('kv').put(v,k);tx.oncomplete=()=>res(true);tx.onerror=()=>res(false);tx.onabort=()=>res(false)}catch(e){res(false)}})},
+  /* 寫入失敗時指數退避重試（0.4s → 0.8s → 1.6s），仍失敗才回報 */
+  async setRetry(k,v,n=3){for(let i=0;i<=n;i++){if(await this.set(k,v)||!this.db)return true;if(i<n)await new Promise(r=>setTimeout(r,400*2**i))}return false},
   del(k){if(!this.db){this.mem.delete(k);return Promise.resolve()}return new Promise(res=>{try{const tx=this.db.transaction('kv','readwrite');tx.objectStore('kv').delete(k);tx.oncomplete=()=>res();tx.onerror=()=>res()}catch(e){res()}})}
 };
 
@@ -269,19 +276,30 @@ let settings=JSON.parse(JSON.stringify(DEF_SETTINGS));
 let logoImg=null;
 let view={name:'list',pid:null,iid:null,tab:'plan'};
 const photoCache=new Map();
+function cachePhoto(id,d){photoCache.delete(id);photoCache.set(id,d);while(photoCache.size>40)photoCache.delete(photoCache.keys().next().value)}
 let saveT=null,saveST=null;
-function save(){clearTimeout(saveT);saveT=setTimeout(()=>store.set('projects',projects),350)}
-function saveSettings(){clearTimeout(saveST);saveST=setTimeout(()=>store.set('settings',settings),350)}
+let saveWarned=0;
+function saveFail(ok){if(ok||Date.now()-saveWarned<15000)return;saveWarned=Date.now();toast('⚠ 儲存失敗：手機空間可能不足，請先備份並刪除舊照片')}
+function save(){clearTimeout(saveT);saveT=setTimeout(()=>store.setRetry('projects',projects).then(saveFail),350)}
+function saveSettings(){clearTimeout(saveST);saveST=setTimeout(()=>store.setRetry('settings',settings).then(saveFail),350)}
 function flush(){clearTimeout(saveT);clearTimeout(saveST);store.set('projects',projects);store.set('settings',settings)}
 addEventListener('pagehide',flush);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flush()});
 function mergeSettings(s){const d=JSON.parse(JSON.stringify(DEF_SETTINGS));if(!s||typeof s!=='object')return d;
-  return {...d,...s,co:{...d.co,...(s.co||{})},prices:{...d.prices,...(s.prices||{})}}}
+  const o={...d,...s,co:{...d.co,...(s.co||{})},prices:{...d.prices,...(s.prices||{})}};
+  if(typeof o.logo!=='string'||!/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(o.logo))o.logo=null;
+  for(const k of Object.keys(o.co))o.co[k]=String(o.co[k]??'');o.terms=String(o.terms??'');return o}
 async function refreshLogo(){logoImg=null;if(settings.logo){try{logoImg=await loadImg(settings.logo)}catch(e){}}}
 
 const cur=()=>projects.find(p=>p.id===view.pid);
 const curItem=()=>{const p=cur();return p&&p.items.find(i=>i.id===view.iid)};
-function normProject(p){const o={status:STATUS[0],extra:0,extraNote:'',phone:'',addr:'',note:'',photos:[],items:[],...p};o.items=(o.items||[]).filter(it=>it&&TYPES[it.type]).map(upgradeItem);return o}
+const safeId=v=>{const s=String(v??'');return /^[A-Za-z0-9_-]{1,40}$/.test(s)?s:uid()};
+function normProject(p){const o={status:STATUS[0],extra:0,extraNote:'',phone:'',addr:'',note:'',photos:[],items:[],...p};
+  o.id=safeId(o.id);for(const k of ['name','phone','addr','note','extraNote','date'])o[k]=String(o[k]??'');
+  if(!STATUS.includes(o.status))o.status=STATUS[0];o.extra=Number.isFinite(+o.extra)?+o.extra:0;
+  o.photos=(Array.isArray(o.photos)?o.photos:[]).map(String).filter(x=>/^[A-Za-z0-9_-]{1,40}$/.test(x));
+  o.items=(Array.isArray(o.items)?o.items:[]).filter(it=>it&&TYPES[it.type]&&it.p&&typeof it.p==='object').map(it=>{const u=upgradeItem(it);
+    u.id=safeId(u.id);u.loc=String(u.loc??'');u.note=String(u.note??'');u.qty=clamp(parseInt(u.qty,10)||1,1,999);return u});return o}
 
 function newItem(type){const t=TYPES[type];const p=JSON.parse(JSON.stringify(t.d));
   for(const k of t.f){const f=FIELDS[k];if(p[k]!==undefined)continue;
@@ -307,7 +325,7 @@ function warnings(it){const p=it.p,w=[];
   return w;
 }
 const qtyUnit=it=>it.type==='canopy'?'組':'樘';
-function sizeText(it){const p=it.p;if(it.type==='canopy'){const M=canopyModel(p);return `${fmtLen(M.Lx)} × ${fmtLen(M.y1)}`}return it.type==='canopy'?'':`${fmtLen(p.W)} × ${fmtLen(p.H)}`}
+function sizeText(it){const p=it.p;if(it.type==='canopy'){const M=canopyModel(p);return `${fmtLen(M.Lx)} × ${fmtLen(M.y1)}`}return `${fmtLen(p.W)} × ${fmtLen(p.H)}`}
 function amountText(it){const m=metrics(it);return m.canopy?`${m.m2.toFixed(2)} m²`:`${m.cai.toFixed(1)} 才`}
 function totals(p){let cai=0,m2=0;for(const it of p.items){const m=metrics(it);if(m.canopy)m2+=m.m2;else cai+=m.cai}return {cai,m2}}
 const hasPrices=()=>Object.values(settings.prices).some(v=>+v>0);
@@ -915,7 +933,7 @@ const bar=html=>`<header class="bar"><div class="bar-inner">${html}</div></heade
 let AI=null,AIimg=null,aiCtl=null;
 const aiSel=new Set();
 
-function go(name,pid,iid){dispose3D();if(aiCtl){aiCtl.abort();aiCtl=null}
+function go(name,pid,iid){dispose3D();wake(name==='project'||name==='item');if(aiCtl){aiCtl.abort();aiCtl=null}
   if(name==='list')photoCache.clear();if(name!=='item')aiSel.clear();
   view={name,pid:pid||null,iid:iid||null,tab:name==='item'?'plan':view.tab,tool:''};render();scrollTo(0,0)}
 function render(){
@@ -937,11 +955,12 @@ function cardsHTML(){
       <span class="big num">${amt}</span><small><span class="st s${si}">${esc(p.status)}</span>${esc(p.addr||'未填地址')}</small><small>${esc(p.date)}　${p.items.length} 項</small></button>`}).join('');
 }
 function renderList(){
-  app.innerHTML=bar(`<div class="title">門窗丈量</div><button class="barbtn" data-act="settings">設定</button>`)
+  app.innerHTML=bar(`<div class="title">丈量大師</div><button class="barbtn" data-act="settings">設定</button>`)
   +`<main><button class="b primary" data-act="newProject">新增案場</button>
   ${store.db?'':'<p class="note" style="color:var(--danger)">這個瀏覽器無法儲存資料，關閉頁面後內容會消失。</p>'}
   ${projects.length>3?`<input class="search" id="q" type="search" placeholder="搜尋業主、地址、電話" value="${esc(query)}" autocomplete="off">`:''}
   <div class="list" id="plist">${cardsHTML()}</div>
+  ${backupDue()?`<div class="panel pad" style="margin-top:14px;border-color:var(--tape)"><b>⏰ ${settings.lastBackup?`已經 ${daysSince(settings.lastBackup)} 天沒備份`:'還沒備份過'}</b><p class="note" style="margin:6px 0 10px">資料只存在這支手機，換機、清除 Safari 或手機故障就會消失。</p><button class="b primary" data-act="backupAll">立即備份全部資料</button></div>`:''}
   ${settings.co.name?'':'<p class="note">先到「設定」填公司名稱與電話，PDF 和 CAD 圖框會自動帶入。</p>'}
   <p class="note">資料存在這支手機的瀏覽器裡。記得定期到「設定」備份。</p></main>`;
 }
@@ -1060,7 +1079,7 @@ function refreshItem(){const it=curItem();if(!it)return;
   if($('#v3')){clearTimeout(r3T);r3T=setTimeout(()=>{const box=$('#v3');if(box)mount3D(box,curItem())},500)}
   $('#metric').innerHTML=metricHTML(it)}
 async function loadThumbs(p){for(const id of p.photos){const els=app.querySelectorAll(`img[data-pid="${id}"]`);if(!els.length)continue;
-  let d=photoCache.get(id);if(!d){d=await store.get('photo:'+id);if(d)photoCache.set(id,d)}if(d)els.forEach(el=>el.src=d)}}
+  let d=photoCache.get(id);if(!d){d=await store.get('photo:'+id);if(d)cachePhoto(id,d)}if(d)els.forEach(el=>el.src=d)}}
 
 /* ---------- 設定 ---------- */
 function renderSettings(){
@@ -1071,7 +1090,7 @@ function renderSettings(){
     <h2>公司資料（印在 PDF 與 CAD 標題欄）</h2>
     <div class="panel form">
       <div class="fld full" style="flex-direction:row;gap:14px;align-items:center">
-        <label class="logo" for="logoIn">${s.logo?`<img src="${s.logo}" alt="公司標誌">`:'上傳<br>公司標誌'}</label>
+        <label class="logo" for="logoIn">${s.logo?`<img src="${esc(s.logo)}" alt="公司標誌">`:'上傳<br>公司標誌'}</label>
         <input type="file" id="logoIn" class="vh" accept="image/*">
         <div style="flex:1;min-width:0">${inp('co.name','公司名稱',c.name)}</div>
       </div>
@@ -1095,14 +1114,21 @@ function renderSettings(){
       <label class="fld tog"><span>附現場照片</span><input type="checkbox" data-sf="pdfPhotos" ${s.pdfPhotos?'checked':''}></label>
       <label class="fld full"><span>報價條款</span><textarea data-sf="terms">${esc(s.terms)}</textarea></label>
     </div>
+    <h2>現場工具</h2>
+    <div class="panel form">
+      <label class="fld tog full"><span>丈量時螢幕保持常亮</span><input type="checkbox" data-sf="wake" ${s.wake!==false?'checked':''}></label>
+      <div class="fld full"><span>儲存空間</span><div class="note" id="stInfo" style="margin:0">檢查中…</div></div>
+      <div class="fld full"><span>離線使用</span><div class="note" style="margin:0">${canPWA?'用 Safari「分享 → 加入主畫面」安裝後，沒有網路也能開啟與丈量。':'目前在預覽環境中，離線安裝功能需從正式網址開啟。'}</div></div>
+    </div>
     <h2>備份與匯入</h2>
     <div class="stack">
       <button class="b primary" data-act="backupAll">備份全部資料（含照片）</button>
       <label class="b" for="importIn" style="cursor:pointer">匯入備份檔</label>
       <input type="file" id="importIn" class="vh" accept=".json,application/json">
     </div>
-    <p class="note">共 ${projects.length} 個案場。換手機或清除 Safari 資料前，請先備份。</p>
+    <p class="note">共 ${projects.length} 個案場。${settings.lastBackup?`上次完整備份：${esc(settings.lastBackup)}。`:''}換手機或清除 Safari 資料前，請先備份。</p>
   </main>`;
+  storageInfo();
 }
 
 /* ================= 事件 ================= */
@@ -1115,7 +1141,7 @@ function onField(e){const t=e.target;
   }
   if(t.id==='q'){query=t.value;$('#plist').innerHTML=cardsHTML();return}
   if(t.dataset.sf){let v=t.type==='checkbox'?t.checked:t.value;if(t.dataset.num!==undefined){v=parseFloat(v);if(!Number.isFinite(v)||v<0)return}
-    setPath(settings,t.dataset.sf,v);saveSettings();return}
+    setPath(settings,t.dataset.sf,v);saveSettings();if(t.dataset.sf==='wake')wake(v);return}
   if(t.dataset.pf){const p=cur();if(!p)return;const k=t.dataset.pf;
     if(k==='extra'){const n=parseFloat(t.value);p.extra=Number.isFinite(n)?n:0;const q=$('#qtot');if(q&&hasPrices())q.innerHTML=quoteLine(quoteTotals(p))}
     else p[k]=t.value;
@@ -1209,7 +1235,7 @@ async function compress(file,max,q){const u=URL.createObjectURL(file);
     const d=c.toDataURL('image/jpeg',q);c.width=c.height=0;return d}
   finally{URL.revokeObjectURL(u)}}
 async function addPhotos(files){const p=cur();if(!p||!files.length)return;busy(true,'正在處理照片…');let fail=0;
-  try{for(const f of files){try{const d=await compress(f,1600,0.75);const id=uid();await store.set('photo:'+id,d);p.photos.push(id);photoCache.set(id,d)}catch(err){fail++}}
+  try{for(const f of files){try{const d=await compress(f,1600,0.75);const id=uid();await store.set('photo:'+id,d);p.photos.push(id);cachePhoto(id,d)}catch(err){fail++}}
     save();render();if(fail)toast(`${fail} 張照片無法讀取`)}
   finally{busy(false)}}
 async function setLogo(file){if(!file)return;try{settings.logo=await compress(file,400,0.9);await refreshLogo();saveSettings();render()}catch(e){toast('標誌圖片無法讀取')}}
@@ -1223,7 +1249,8 @@ async function saveFile(name,blob){
     catch(err){const c=err&&err.code;if(c==='declined')return toast('已取消匯出');if(c==='rate_limited')return toast('請稍候再試一次');
       if(c==='too_large')return toast('檔案太大，請減少照片後再試')}}
   try{const file=new File([blob],name,{type:blob.type});
-    if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:name});return}}
+    /* 不帶 title：iOS 同時帶 title 時只會分享文字、檔案被丟掉 */
+    if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file]});return}}
   catch(err){if(err&&err.name==='AbortError')return}
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},1500);
@@ -1395,17 +1422,23 @@ async function exportDXF(items){
 /* ---------- 備份 / 匯入 ---------- */
 async function backup(list){
   if(!list.length)return toast('沒有可備份的案場');busy(true,'正在打包備份…');
-  try{const photos={};for(const p of list)for(const id of p.photos){const d=await store.get('photo:'+id);if(d)photos[id]=d}
-    const data={app:'mw-measure',v:2,at:new Date().toISOString(),projects:list,photos,settings:list===projects?settings:undefined};
-    const blob=new Blob([JSON.stringify(data)],{type:'application/json'});busy(false);
-    await saveFile(list.length===1?fname(list[0],'備份','json'):`門窗丈量_全部備份_${today()}.json`,blob)}
+  try{/* 分批串流：照片逐張讀出、逐張轉成 Blob 片段，避免整包照片同時留在記憶體（低記憶體手機防 OOM） */
+    const head={app:'mw-measure',v:2,at:new Date().toISOString(),projects:list,settings:list===projects?settings:undefined};
+    const parts=[JSON.stringify(head).slice(0,-1)+',"photos":{'];let first=true,i=0;const ids=list.flatMap(p=>p.photos);
+    for(const id of ids){const d=await store.get('photo:'+id);if(!d)continue;
+      parts.push(new Blob([(first?'':',')+JSON.stringify(id)+':'+JSON.stringify(d)]));first=false;
+      if(++i%5===0)busy(true,`正在打包備份…（${i}/${ids.length}）`)}
+    parts.push('}}');
+    const blob=new Blob(parts,{type:'application/json'});busy(false);
+    await saveFile(list.length===1?fname(list[0],'備份','json'):`丈量大師_全部備份_${today()}.json`,blob);
+    if(list===projects){settings.lastBackup=today();saveSettings();if(view.name==='list')render()}}
   catch(err){toast('備份失敗：'+(err&&err.message||err))}
   finally{busy(false)}
 }
 async function importBackup(file){
-  if(!file)return;busy(true,'正在匯入…');
+  if(!file)return;if(file.size>400*1024*1024)return toast('備份檔超過 400 MB，這支手機可能記憶體不足，請改用電腦匯入');busy(true,'正在匯入…');
   try{const data=JSON.parse(await file.text());
-    if(!data||data.app!=='mw-measure'||!Array.isArray(data.projects))throw new Error('這不是門窗丈量的備份檔');
+    if(!data||data.app!=='mw-measure'||!Array.isArray(data.projects))throw new Error('這不是丈量大師（門窗丈量）的備份檔');
     let add=0,rep=0;
     for(const [id,d] of Object.entries(data.photos||{}))if(typeof d==='string'&&d.startsWith('data:image/'))await store.set('photo:'+id,d);
     for(const raw of data.projects){if(!raw||!raw.id||!Array.isArray(raw.items))continue;const np=normProject(raw);
@@ -1485,9 +1518,35 @@ ${imgs.length?`另附 ${imgs.length} 張現場照片，請判讀牆面、開口�
   finally{aiCtl=null;const b=$('#aiBtn');if(b)b.textContent='AI 檢查這個項目'}
 }
 
+/* ================= 黑科技：離線 PWA、永久儲存、螢幕常亮、備份提醒 ================= */
+const canPWA=('serviceWorker' in navigator)&&(location.protocol==='https:'||location.hostname==='localhost')&&!/claude\.ai|claudeusercontent|anthropic/.test(location.hostname);
+function daysSince(d){const t=Date.parse(d);return Number.isFinite(t)?Math.floor((Date.now()-t)/864e5):9999}
+function backupDue(){return projects.length>0&&(!settings.lastBackup||daysSince(settings.lastBackup)>=7)}
+let wakeLock=null;
+async function wake(on){
+  try{if(on&&settings.wake!==false&&('wakeLock' in navigator)&&document.visibilityState==='visible'){
+      if(!wakeLock){wakeLock=await navigator.wakeLock.request('screen');wakeLock.addEventListener('release',()=>{wakeLock=null})}}
+    else if(wakeLock){const w=wakeLock;wakeLock=null;await w.release()}}catch(e){wakeLock=null}}
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')wake(view.name==='project'||view.name==='item')});
+async function storageInfo(){const el=$('#stInfo');if(!el)return;
+  try{const st=navigator.storage;if(!st||!st.estimate){el.textContent='這個瀏覽器無法查詢。';return}
+    const [e,per]=await Promise.all([st.estimate(),st.persisted?st.persisted():Promise.resolve(false)]),mb=v=>(v/1048576).toFixed(1);
+    if(!el.isConnected)return;
+    el.innerHTML=`已使用 ${mb(e.usage||0)} MB／可用約 ${mb(e.quota||0)} MB　${per?'<b style="color:var(--ok)">✓ 已鎖定永久儲存</b>':'<span style="color:var(--danger)">未鎖定永久儲存（空間不足時系統可能清除），建議加入主畫面並定期備份</span>'}`}
+  catch(e){el.textContent='無法取得儲存資訊。'}}
+async function persistStorage(){try{const st=navigator.storage;if(st&&st.persist&&!(await st.persisted()))await st.persist()}catch(e){}}
+function setupPWA(){if(!canPWA)return;
+  for(const [rel,href] of [['manifest','manifest.webmanifest'],['apple-touch-icon','icon-180.png']]){const l=document.createElement('link');l.rel=rel;l.href=href;document.head.appendChild(l)}
+  navigator.serviceWorker.register('sw.js').then(reg=>{reg.addEventListener('updatefound',()=>{const nw=reg.installing;if(!nw)return;
+    nw.addEventListener('statechange',()=>{if(nw.state==='installed'&&navigator.serviceWorker.controller)toast('新版本已下載，關閉 App 再開即可更新')})})}).catch(()=>{});
+}
+addEventListener('offline',()=>toast('已離線：丈量與存檔照常，AI 與首次 3D 載入需要網路'));
+addEventListener('online',()=>toast('網路已恢復'));
+
 /* ================= 啟動 ================= */
 (async()=>{
   await store.open();
+  setupPWA();persistStorage();
   const [s,ps]=await Promise.all([store.get('settings'),store.get('projects')]);
   settings=mergeSettings(s);if(Array.isArray(ps))projects=ps.map(normProject);
   await refreshLogo();

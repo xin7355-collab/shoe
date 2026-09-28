@@ -1,0 +1,30 @@
+{
+  "skills": [
+    "a11y-audit",
+    "adversarial-reviewer",
+    "app-guardrails-audit",
+    "apple-hig-expert",
+    "focused-fix",
+    "performance-profiler",
+    "pw",
+    "security-guidance",
+    "senior-frontend",
+    "ship-gate"
+  ],
+  "source_repo": "https://github.com/xin7355-collab/skl",
+  "source_commit": "55b2e7f",
+  "updated_at": "2026-09-28T20:21:17Z",
+  "packs": [],
+  "extra_skills": [
+    "engineering-team/a11y-audit/skills/a11y-audit",
+    "engineering-team/playwright-pro/skills/pw",
+    "engineering-team/skills/adversarial-reviewer",
+    "engineering-team/skills/senior-frontend",
+    "engineering/security-guidance/skills/security-guidance",
+    "engineering/skills/focused-fix",
+    "engineering/skills/performance-profiler",
+    "engineering/skills/ship-gate",
+    "product-team/apple-hig-expert/skills/apple-hig-expert",
+    "xin-toolkit/skills/app-guardrails-audit"
+  ]
+}
