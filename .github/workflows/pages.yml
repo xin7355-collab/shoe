@@ -1,14 +1,15 @@
 name: Deploy to GitHub Pages
 
+# 推 main 後把網站檔案發佈到 gh-pages 分支。
+# 用 gh-pages 分支而不是 actions/deploy-pages：前者在 repo 尚未手動啟用 Pages 時也能運作
+# （GitHub 會在第一次推 gh-pages 時自動啟用），後者會直接 404 失敗。
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
@@ -17,18 +18,23 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
       - name: Check JS syntax
         run: node -e "const s=require('fs').readFileSync('index.html','utf8');new Function(s.match(/<script>([\s\S]*)<\/script>/)[1]);new Function(require('fs').readFileSync('sw.js','utf8'))"
-      - name: Stage site
-        run: mkdir _site && cp index.html sw.js manifest.webmanifest icon-*.png _site/ && touch _site/.nojekyll
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: _site
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Publish to gh-pages
+        run: |
+          mkdir -p _site
+          cp index.html sw.js manifest.webmanifest icon-*.png _site/
+          touch _site/.nojekyll
+          cd _site
+          git init -q -b gh-pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "deploy ${GITHUB_SHA::7}"
+          for i in 1 2 3 4; do
+            git push -f "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" gh-pages && exit 0
+            sleep $((2**i))
+          done
+          exit 1
