@@ -62,7 +62,7 @@
 - 用途：「丈量大師」——鋁門窗／採光罩現場丈量 PWA（尺寸、施工圖 SVG、3D、才數／坪數報價、PDF／DXF／CSV 匯出）。
 - 主要檔案：`index.html`（整個 App 單檔）、`sw.js`（離線快取，改版時 `VERSION` +1）、`manifest.webmanifest`、`icon-*.png`。
 - 需要的 Secrets：無。
-- 部署在哪：GitHub Pages（`.github/workflows/pages.yml`，推 main 自動部署）；同一份 HTML 也發佈為 Claude Artifact（在 Artifact 裡才有 AI 與 downloads 能力）。
+- 部署在哪：GitHub Pages（`.github/workflows/pages.yml`，推 main 自動發佈到 gh-pages 分支）；同一份 HTML 也發佈為 Claude Artifact（在 Artifact 裡才有 AI 與 downloads 能力）。
 - 特別注意：
   - IndexedDB 名稱 `mw-measure` 與備份檔 `app:"mw-measure"` 不可改，否則使用者舊資料／舊備份讀不到。
   - 所有 `innerHTML` 樣板裡的使用者資料一律 `esc()`；匯入的備份檔視為不可信（id 由 `safeId()` 過濾、logo 只收 data:image）。

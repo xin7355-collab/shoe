@@ -17,9 +17,9 @@
 
 ## 部署
 
-純靜態網站，沒有建置步驟。推到 `main` 後由 `.github/workflows/pages.yml` 發佈到 GitHub Pages：
+純靜態網站，沒有建置步驟。推到 `main` 後由 `.github/workflows/pages.yml` 把網站檔案推到 `gh-pages` 分支：
 
-1. GitHub repo → **Settings → Pages → Build and deployment → Source** 選 **GitHub Actions**（只需設定一次）
+1. 若網址打不開：GitHub repo → **Settings → Pages → Source** 選 **Deploy from a branch**、分支 **gh-pages** / `(root)`（只需設定一次）
 2. 網址：`https://xin7355-collab.github.io/shoe/`
 3. iPhone 用 Safari 開啟 → 分享 → **加入主畫面**
 
