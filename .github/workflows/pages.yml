@@ -24,6 +24,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check JS syntax
         run: node -e "const s=require('fs').readFileSync('index.html','utf8');new Function(s.match(/<script>([\s\S]*)<\/script>/)[1]);new Function(require('fs').readFileSync('sw.js','utf8'))"
+      - name: Offline self-test
+        run: node tests/selftest.js
       - name: Publish to gh-pages
         run: |
           mkdir -p _site

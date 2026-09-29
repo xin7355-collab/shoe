@@ -28,7 +28,7 @@
 }
 :root[data-theme="dark"]{--bg:#13181E;--surface:#1D242C;--ink:#E4E9EE;--muted:#98A6B4;--line:#33404C;--dim:#3BC9DB;--danger:#F97066;--chip:#26303A;--ok:#5FD39B}
 *,*::before,*::after{box-sizing:inherit}
-html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+html{height:100%;scroll-padding-top:calc(env(safe-area-inset-top,0px) + 76px)}
 body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);
   font:16px/1.5 -apple-system,"PingFang TC","Heiti TC","Noto Sans TC",sans-serif;-webkit-text-size-adjust:100%}
 button{font:inherit;color:inherit;cursor:pointer}
@@ -130,6 +130,28 @@ select{padding-right:32px;background-image:linear-gradient(45deg,transparent 50%
 .x{appearance:none;border:1px solid var(--line);background:var(--surface);border-radius:10px;min-height:42px;color:var(--danger);font-weight:700}
 .paper svg *{pointer-events:none}
 .paper svg [data-cell]{pointer-events:auto;cursor:pointer}
+.paper svg [data-obj]{pointer-events:all;cursor:pointer}
+.paper.drag{touch-action:none;outline:2px dashed var(--dim);outline-offset:2px}
+.paper.zoom svg{width:220%;max-width:none}
+details.panel>summary{list-style:none;cursor:pointer;padding:14px 16px;font-weight:600;display:flex;justify-content:space-between;gap:8px;min-height:48px;align-items:center}
+details.panel>summary::-webkit-details-marker{display:none}
+details.panel>summary::after{content:"＋";color:var(--muted)}
+details.panel[open]>summary::after{content:"－"}
+details.panel+details.panel,details.panel+.panel{margin-top:10px}
+.clist{display:grid;gap:6px;max-height:340px;overflow:auto}
+.citem{appearance:none;display:grid;grid-template-columns:1fr auto;gap:2px 10px;text-align:left;border:1px solid var(--line);background:var(--bg);border-radius:10px;padding:9px 12px;min-height:46px}
+.citem small{color:var(--muted);font-size:12px}
+.citem .w{grid-row:1/3;grid-column:2;align-self:center;font-size:13px;color:var(--dim);font-weight:600}
+.tbl{overflow-x:auto}
+.tbl table{border-collapse:collapse;width:100%;font-size:13px;min-width:520px}
+.tbl th,.tbl td{border-bottom:1px solid var(--line);padding:7px 6px;text-align:left;vertical-align:top}
+.tbl th{color:var(--muted);font-weight:600;background:var(--chip)}
+.tbl td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:14px;margin:10px 0}
+.kv b{color:var(--muted);font-weight:600}
+.selp{border-color:var(--dim);margin-top:10px}
+.nud{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
+.nud button{appearance:none;border:1px solid var(--line);background:var(--surface);border-radius:10px;min-height:44px;font-weight:700}
 .metric{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;padding:12px 4px 2px;color:var(--muted);font-size:14px}
 .metric b{font:600 36px/1 "Barlow Condensed",sans-serif;color:var(--ink);margin-right:2px}
 .warn{flex-basis:100%;color:var(--danger);font-size:14px;font-weight:600}
@@ -176,7 +198,7 @@ const OPT={
   glass:['5mm 清玻璃','5mm 綠玻璃','5mm 霧面玻璃','8mm 強化玻璃','5+5 膠合玻璃','複層玻璃','其他'],
   color:['白色','銀色','香檳金','咖啡色','黑色','其他'],
   dir:['上推','左側推','右側推'],
-  style:['單開','雙開','橫拉門'],
+  style:['單開','雙開','子母門','橫拉門','雙橫拉門','折疊門','穀倉門','自動感應門','防火門','玄關門（含側窗）'],
   hinge:['左','右'],
   panel:['PC耐力板 6mm','PC耐力板 8mm','PC中空板','強化玻璃 8mm','膠合玻璃 5+5','鋁板','其他'],
   frame:['鋁骨架','鍍鋅鋼骨架','不鏽鋼骨架'],
@@ -207,21 +229,298 @@ const FIELDS={
   pspacing:{l:'橫料間距（沿斜面）',t:'len'},
   panel:{l:'板材',t:'sel',o:OPT.panel},
   frame:{l:'骨架',t:'sel',o:OPT.frame},
-  drain:{l:'排水',t:'sel',o:OPT.drain}
+  drain:{l:'排水',t:'sel',o:OPT.drain},
+  form:{l:'造型',t:'sel',o:['拱形窗','圓窗','八角窗','斜頂梯形窗','內開內倒窗','上懸窗','折疊窗','凸窗（三面）']},
+  RW:{l:'房間寬（X）',t:'len'},RD:{l:'房間深（Y）',t:'len'},RH:{l:'天花板高',t:'len'},wallT:{l:'牆厚',t:'len'}
 };
+/* 有鉸鏈（需要選左右開）的門型 */
+const HINGED=new Set(['單開','防火門','玄關門（含側窗）']);
 const TYPES={
   slide:{n:'橫拉窗',f:['tri','W','H','panels','screen','series','glass','color'],d:{W:1800,H:1200,panels:2,screen:true}},
   fixed:{n:'固定窗',f:['tri','W','H','cols','rows','series','glass','color'],d:{W:1200,H:1200,cols:1,rows:1}},
   casement:{n:'推射窗',f:['tri','W','H','sash','dir','screen','series','glass','color'],d:{W:900,H:1200,sash:1,screen:true}},
   louver:{n:'百葉窗',f:['tri','W','H','cols','screen','color'],d:{W:1000,H:1100,cols:1}},
+  shaped:{n:'造型窗',f:['tri','W','H','form','screen','series','glass','color'],d:{W:1200,H:1500,form:'拱形窗'}},
   door:{n:'門',f:['tri','W','H','style','hinge','transom','series','glass','color'],d:{W:900,H:2100,transom:0}},
-  canopy:{n:'採光罩',f:['L','D','Hb','Hf','posts','spacing','pspacing','panel','frame','drain','color'],d:{L:5000,D:2000,Hb:3000,Hf:2600,posts:2,spacing:600,pspacing:1000}}
+  canopy:{n:'採光罩',f:['L','D','Hb','Hf','posts','spacing','pspacing','panel','frame','drain','color'],d:{L:5000,D:2000,Hb:3000,Hf:2600,posts:2,spacing:600,pspacing:1000}},
+  room:{n:'室內平面圖',f:['RW','RD','RH','wallT'],d:{RW:5000,RD:4000,RH:2800,wallT:120,objs:[],tpl:'blank'}}
 };
 const LOCS=['客廳','主臥','次臥','小孩房','書房','廚房','浴室','陽台','後陽台','樓梯間','前門','後門','頂樓','車庫'];
 const DEF_SETTINGS={co:{name:'',phone:'',addr:'',taxid:'',line:'',staff:''},logo:null,
-  prices:{slide:0,fixed:0,casement:0,louver:0,door:0,canopy:0},minCai:0,tax:false,
+  prices:{slide:0,fixed:0,casement:0,louver:0,shaped:0,door:0,canopy:0,room:0},minCai:0,tax:false,
   terms:'1. 本報價有效期限 30 天。\n2. 尺寸以現場丈量為準，下單後依實際尺寸計價。\n3. 訂金 30%，完工驗收後付清尾款。',
   pdfQuote:true,pdfPhotos:true,wake:true,lastBackup:''};
+
+/*@@PURE-START 室內平面：家具庫、範本產生器、構想解析、用電估算。
+ * 這一段只放純計算、不碰 DOM，tests/selftest.js 會單獨抽出來離線驗證；改這段請同步跑 node tests/selftest.js。 */
+const ROOM=(()=>{
+  const CATS=['辦公桌','座椅','互動協作','應變指揮','會議視聽','辦公設備','收納','客餐廳臥室','廚房','廚房家電','浴室','電氣','弱電','照明','門窗開口'];
+  /* 欄位：k 代號、n 名稱、c 類別、w 寬、d 深、h 高（mm）、s 平面圖形、watt 用電（W）、v 電壓、pf 功率因數、
+   * ded 建議專用迴路、wet 潮濕場所（插座需漏電斷路器）、light 照明迴路、top 畫在最上層、kw 搜尋關鍵字 */
+  const F=(k,n,c,w,d,h,s,o)=>({k,n,c,w,d,h,s,...(o||{})});
+  const C=[
+    F('desk','標準辦公桌 140','辦公桌',1400,700,750,'desk'),
+    F('desk12','辦公桌 120','辦公桌',1200,600,750,'desk'),
+    F('deskL','L 型辦公桌','辦公桌',1600,1600,750,'deskL'),
+    F('exec','主管桌','辦公桌',1800,900,760,'desk'),
+    F('standing','電動升降桌','辦公桌',1400,700,1000,'desk',{watt:150,kw:'升降 站立'}),
+    F('bench','4 人屏風工作站','辦公桌',2800,1400,1100,'bench',{kw:'屏風 OA'}),
+    F('chair','人體工學辦公椅','座椅',650,650,1100,'chair'),
+    F('mchair','會議椅','座椅',550,550,900,'chair'),
+    F('vchair','訪客椅','座椅',500,500,850,'chair'),
+    F('stool','吧檯椅','座椅',400,400,750,'round'),
+    F('hex','六角協作桌','互動協作',1600,1400,750,'hex',{kw:'蜂巢 共創'}),
+    F('trap','梯形拼接桌','互動協作',1200,600,750,'trap',{kw:'模組 拼接 彈性'}),
+    F('flip','翻板移動會議桌','互動協作',1600,600,750,'desk',{kw:'折疊 翻桌 培訓'}),
+    F('wb','移動白板','互動協作',1800,500,1900,'board',{kw:'白板 腦力激盪'}),
+    F('bar','站立吧檯桌','互動協作',2000,600,1050,'desk',{kw:'站立 快速會議'}),
+    F('pod1','單人隔音電話亭','互動協作',1000,1000,2200,'pod',{watt:100,kw:'靜音艙 phone booth'}),
+    F('pod2','雙人洽談艙','互動協作',2000,1400,2200,'pod',{watt:150,kw:'靜音艙 會議艙'}),
+    F('bean','懶骨頭','互動協作',800,800,500,'round',{kw:'休閒'}),
+    F('steps','階梯座位','互動協作',3000,1200,900,'steps',{kw:'看台 分享'}),
+    F('touch','86 吋觸控互動螢幕（移動架）','互動協作',2000,800,1900,'screen',{watt:450,kw:'觸控 互動 電子白板'}),
+    F('eocdesk','應變作業桌（雙螢幕）','應變指揮',1400,800,750,'desk2m',{watt:350,kw:'EOC 緊急 作業席'}),
+    F('cmd','指揮官桌','應變指揮',1800,900,760,'desk2m',{watt:350,kw:'EOC 指揮'}),
+    F('vwall','態勢顯示電視牆','應變指揮',4000,300,2400,'screen',{watt:1500,ded:true,kw:'EOC 大螢幕 拼接'}),
+    F('radio','無線電通訊台','應變指揮',1200,700,750,'desk',{watt:300,kw:'通訊'}),
+    F('ups','UPS 不斷電系統','應變指揮',600,900,1000,'box',{watt:500,ded:true,kw:'不斷電'}),
+    F('rack','42U 機櫃','應變指揮',600,1000,2000,'box',{watt:1500,ded:true,kw:'伺服器 機房'}),
+    F('map','大型地圖作業桌','應變指揮',2400,1200,900,'desk',{kw:'EOC 沙盤'}),
+    F('mtable','會議桌（長桌）','會議視聽',2400,1200,750,'desk'),
+    F('rtable','圓形洽談桌','會議視聽',1000,1000,750,'round'),
+    F('tv','75 吋電視（壁掛）','會議視聽',1700,100,1000,'screen',{watt:300}),
+    F('proj','投影機','會議視聽',400,300,200,'box',{watt:350}),
+    F('vc','視訊會議機','會議視聽',600,150,150,'screen',{watt:150,kw:'視訊'}),
+    F('printer','事務機（影印）','辦公設備',600,650,1100,'box',{watt:1100,ded:true}),
+    F('water','飲水機（冰溫熱）','辦公設備',400,400,1200,'box',{watt:800}),
+    F('coffee','咖啡機','辦公設備',400,450,450,'box',{watt:1400,ded:true}),
+    F('file','檔案櫃','收納',900,450,1800,'cab'),
+    F('ward','衣櫃','收納',1800,600,2200,'cab'),
+    F('book','書櫃','收納',900,350,2000,'cab'),
+    F('locker','置物櫃','收納',900,500,1800,'cab'),
+    F('sofa3','三人沙發','客餐廳臥室',2100,900,800,'sofa'),
+    F('sofa1','單人沙發','客餐廳臥室',900,900,800,'sofa'),
+    F('tea','茶几','客餐廳臥室',1200,600,450,'rect'),
+    F('tvcab','電視櫃','客餐廳臥室',1800,450,500,'cab'),
+    F('bedD','雙人床（5 尺）','客餐廳臥室',1520,1880,500,'bed'),
+    F('bedQ','加大雙人床（6 尺）','客餐廳臥室',1820,1880,500,'bed'),
+    F('bedS','單人床（3.5 尺）','客餐廳臥室',1060,1880,500,'bed'),
+    F('nstand','床頭櫃','客餐廳臥室',450,400,550,'cab'),
+    F('dtable','餐桌','客餐廳臥室',1500,900,750,'rect'),
+    F('dchair','餐椅','客餐廳臥室',450,500,850,'chair'),
+    F('k1','一字型廚具','廚房',2400,600,850,'counter'),
+    F('kL','L 型廚具','廚房',2400,1800,850,'counterL'),
+    F('island','中島','廚房',1800,900,900,'island'),
+    F('islandS','中島（含水槽）','廚房',2100,1000,900,'island',{kw:'水槽'}),
+    F('sink','水槽','廚房',800,550,850,'sink',{top:1}),
+    F('hood','抽油煙機','廚房',900,500,600,'hood',{watt:250,wet:1,top:1}),
+    F('ih','IH 電磁爐（雙口）','廚房家電',700,520,50,'hob',{watt:3500,v:220,pf:1,wet:1,top:1,kw:'感應爐'}),
+    F('gas','瓦斯爐','廚房家電',800,520,50,'hob',{top:1}),
+    F('fridge','冰箱（雙門）','廚房家電',700,700,1800,'fridge',{watt:400,ded:true,wet:1}),
+    F('fridgeB','對開冰箱','廚房家電',910,750,1800,'fridge',{watt:500,ded:true,wet:1}),
+    F('oven','嵌入式烤箱','廚房家電',600,600,600,'box',{watt:3000,v:220,pf:1,wet:1}),
+    F('micro','微波爐','廚房家電',500,400,300,'box',{watt:1300,ded:true,wet:1}),
+    F('dish','洗碗機','廚房家電',600,600,850,'box',{watt:2200,v:220,wet:1}),
+    F('wc','馬桶','浴室',400,700,800,'wc'),
+    F('wcE','免治馬桶','浴室',400,700,800,'wc',{watt:1100,wet:1}),
+    F('basin','臉盆浴櫃','浴室',800,500,850,'basin'),
+    F('basin2','雙臉盆浴櫃','浴室',1500,550,850,'basin'),
+    F('shower','淋浴區','浴室',900,900,50,'shower'),
+    F('tub','浴缸','浴室',1500,750,550,'tub'),
+    F('glass','乾濕分離玻璃（固定）','浴室',1200,20,2000,'glass',{kw:'淋浴拉門'}),
+    F('glassS','乾濕分離玻璃（橫拉門）','浴室',1200,60,2000,'glassS',{kw:'淋浴拉門'}),
+    F('heatfan','浴室暖風乾燥機','浴室',300,300,200,'fan',{watt:2400,v:220,wet:1,top:1}),
+    F('wh','儲熱式電熱水器','浴室',500,500,1000,'round',{watt:4000,v:220,pf:1,wet:1,kw:'熱水器'}),
+    F('washer','洗衣機','浴室',600,650,900,'box',{watt:500,ded:true,wet:1}),
+    F('dryer','乾衣機','浴室',600,650,900,'box',{watt:2500,v:220,wet:1}),
+    F('out','一般插座（雙連）','電氣',120,40,300,'outlet',{watt:180,top:1,kw:'插座'}),
+    F('outF','地板插座','電氣',150,150,0,'outlet',{watt:180,top:1,kw:'插座 地插'}),
+    F('outW','防水插座（浴廚陽台）','電氣',120,40,1200,'outlet',{watt:180,wet:1,top:1,kw:'插座'}),
+    F('out220','220V 專用插座','電氣',120,40,300,'outlet',{watt:2000,v:220,ded:true,top:1,kw:'插座'}),
+    F('ac','分離式冷氣 2.8kW（冷房）','電氣',800,250,300,'ac',{watt:1000,v:220,ded:true,top:1,kw:'冷氣 空調'}),
+    F('ac2','分離式冷氣 5.0kW（冷房）','電氣',1000,300,320,'ac',{watt:1700,v:220,ded:true,top:1,kw:'冷氣 空調'}),
+    F('panel','配電箱（總開關箱）','電氣',450,150,600,'panel',{top:1,kw:'電箱 分電盤'}),
+    F('weak','弱電箱（網路／電話／監視）','弱電',400,150,500,'weak',{watt:50,top:1,kw:'資訊箱 多媒體箱'}),
+    F('rj45','網路資訊插座','弱電',120,40,300,'data',{top:1,kw:'網路 RJ45'}),
+    F('ap','無線基地台 AP','弱電',200,200,50,'ap',{top:1,kw:'WiFi PoE'}),
+    F('cctv','監視攝影機','弱電',150,150,100,'cam',{top:1,kw:'監視 PoE'}),
+    F('led','LED 平板燈 60×60','照明',600,600,50,'light',{watt:40,light:1,top:1}),
+    F('down','崁燈','照明',150,150,50,'down',{watt:12,light:1,top:1}),
+    F('elight','緊急照明燈','照明',300,100,100,'light',{watt:10,light:1,top:1}),
+    F('exit','出口標示燈','照明',350,150,150,'light',{watt:5,light:1,top:1}),
+    F('door','單開門','門窗開口',900,100,2100,'door'),
+    F('door2','雙開門','門窗開口',1500,100,2100,'door2'),
+    F('sdoor','橫拉門','門窗開口',1200,100,2100,'sdoor'),
+    F('win','窗','門窗開口',1800,100,1200,'win')
+  ];
+  const byK=Object.fromEntries(C.map(x=>[x.k,x]));
+  function search(q,cat){const t=String(q||'').trim().toLowerCase().split(/\s+/).filter(Boolean);
+    return C.filter(x=>(!cat||x.c===cat)&&t.every(w=>(x.n+' '+x.c+' '+(x.kw||'')+' '+x.k).toLowerCase().includes(w)))}
+
+  /* ---------- 用電估算 ----------
+   * 導線安培容量：PVC 絕緣線、同一導線管內 3 條以下、周溫 35°C 以下的常用估算值（保守取整）。
+   * 實際仍須依「用戶用電設備裝置規則」修正係數（管內條數、周溫、電壓降）由合格電匠／電機技師確認。 */
+  const NFB=[15,20,30,40,50,60,75,100,125,150,175,200,225,250,300,350,400,500,600];
+  const WIRE=[['2.0mm',20],['3.5mm²',25],['5.5mm²',30],['8mm²',40],['14mm²',55],['22mm²',70],['30mm²',80],['38mm²',95],['50mm²',110],['60mm²',125],['80mm²',150],['100mm²',175],['125mm²',200],['150mm²',225],['200mm²',260],['250mm²',290],['325mm²',330]];
+  const BUS=[100,125,150,200,225,250,400,600];
+  const pickNFB=a=>NFB.find(x=>x>=a)||null;
+  const pickWire=a=>{const r=WIRE.find(w=>w[1]>=a);return r?r[0]:'需並聯或改用匯流排槽'};
+  /* 一般插座迴路：110V、NFB 20A → 設計電流 ≤16A 附近；取 1600VA（14.5A，×1.25=18.2A）且最多 8 個出線口 */
+  const GEN_W=1600,GEN_N=8,LIGHT_W=1200;
+  function load(o){const c=byK[o.k]||{};const watt=o.watt!=null&&o.watt!==''?+o.watt:(+c.watt||0);
+    return {watt:Math.max(0,watt||0),v:+(o.v||c.v||110)===220?220:110,pf:+c.pf||0.9,ded:!!c.ded,wet:!!c.wet,light:!!c.light,name:o.label||c.n||o.k,circ:String(o.circ||'').trim()}}
+  function elec(objs,opt){opt=opt||{};const cs=new Map(),order=[];
+    const get=(id,name,v,kind)=>{if(!cs.has(id)){cs.set(id,{id,name,v,kind,items:[],W:0,VA:0,wet:false});order.push(id)}return cs.get(id)};
+    let g=0,gw=0,l=0,d=0;const cur={};
+    for(const o of objs||[]){const L=load(o);if(!(L.watt>0))continue;let c;
+      if(L.circ)c=get('U:'+L.circ,'迴路 '+L.circ,L.v,'user');
+      else if(L.light){const k='L';if(!cur[k]||cur[k].W+L.watt/L.pf>LIGHT_W){l++;cur[k]=get('L'+l,'照明 '+l,110,'light')}c=cur[k]}
+      else if(L.v===220||L.ded||L.watt>=1500){d++;c=get('D'+d,'專用 '+L.name,L.v,'ded')}
+      else{const k=L.wet?'W':'G';if(!cur[k]||cur[k].VA+L.watt/L.pf>GEN_W||cur[k].items.length>=GEN_N){g++;cur[k]=get('G'+g,(L.wet?'潮濕插座 ':'一般插座 ')+g,110,'gen')}c=cur[k]}
+      if(c.kind==='user'&&L.v===220)c.v=220;
+      c.items.push(L.name);c.W+=L.watt;c.VA+=L.watt/L.pf;c.wet=c.wet||L.wet}
+    const circuits=order.map(id=>{const c=cs.get(id),I=c.VA/c.v,Id=I*1.25,nfb=pickNFB(Math.max(Id,15));
+      return {...c,I,Id,nfb,wire:pickWire(nfb),elcb:c.wet}});
+    const totVA=circuits.reduce((a,c)=>a+c.VA,0);
+    const gl=circuits.filter(c=>c.kind==='gen'||c.kind==='light').reduce((a,c)=>a+c.VA,0),rest=totVA-gl;
+    /* 需量：一般插座＋照明「前 3000VA 計 100%、其餘 50%」，專用迴路設備計 100%——住宅估算慣例，偏保守 */
+    const dmdVA=Math.min(gl,3000)+Math.max(0,gl-3000)*0.5+rest;
+    const Imain=dmdVA/220,mainNfb=pickNFB(Math.max(Imain*1.25,30)),mainWire=pickWire(mainNfb||0),bus=BUS.find(b=>b>=(mainNfb||0))||null;
+    const n=circuits.length,slots=Math.ceil(n*1.2)+1;
+    const notes=[];
+    if(circuits.some(c=>c.elcb))notes.push('浴室、廚房、陽台等潮濕場所的插座迴路，須裝漏電斷路器（ELCB）或使用附漏電保護的插座。');
+    if(Imain>100)notes.push(`估算主幹電流約 ${Math.round(Imain)}A，已超過一般住宅單相 3 線常見的 60～100A，請洽台電評估契約容量，或改三相供電。`);
+    if(circuits.some(c=>c.kind==='ded'&&c.W>=3000))notes.push('3kW 以上的電熱設備（烤箱、IH 爐、熱水器、乾衣機）同時使用機率高，建議各自獨立迴路，不要共用插座。');
+    notes.push('本表為初步估算：安培容量採常用保守值，未含管內條數、周溫修正與電壓降計算；施工前須由合格電匠或電機技師依「用戶用電設備裝置規則」確認。');
+    return {circuits,totVA,dmdVA,Imain,mainNfb,mainWire,bus,slots,notes}}
+
+  /* ---------- 範本產生器（座標 mm：原點在室內左上角，X 往右、Y 往下） ---------- */
+  let seq=0;const oid=()=>'o'+Date.now().toString(36)+(seq++).toString(36);
+  const O=(k,x,y,r,ex)=>({id:oid(),k,x:Math.round(x),y:Math.round(y),r:((r||0)%360+360)%360,...(ex||{})});
+  const rot=(r,x,y)=>{const a=r*Math.PI/180;return [x*Math.cos(a)-y*Math.sin(a),x*Math.sin(a)+y*Math.cos(a)]};
+  /* 椅子放在桌子的「使用側」（桌子本地 +Y 方向），朝向桌子 */
+  const seat=(o,k,dx,gap)=>{const c=byK[o.k],[x,y]=rot(o.r,dx||0,c?(o.d||c.d)/2+(gap||330):650);return O(k||'chair',o.x+x,o.y+y,o.r)};
+  const lights=(W,D,k)=>{const o=[],nx=Math.max(1,Math.round(W/2400)),ny=Math.max(1,Math.round(D/2400));
+    for(let i=0;i<nx;i++)for(let j=0;j<ny;j++)o.push(O(k||'led',W*(i+0.5)/nx,D*(j+0.5)/ny,0));return o};
+  const TPL=[
+    {id:'blank',n:'空白房間',cat:'通用',W:4000,D:3000,kw:['空白'],gen:(W,D)=>({W,D,objs:[O('door',W-700,D,0),O('out',W/2,20,0),O('panel',300,75,0)]})},
+    {id:'meet',n:'會議室（長桌）',cat:'辦公',W:5000,D:4000,np:8,kw:['會議','開會','會議室'],gen:(W,D,n)=>{n=n||8;
+      const tl=Math.min(Math.max(Math.ceil(n/2)*650+400,1800),W-1400),D2=Math.max(D,3600);D=D2;
+      const t=O('mtable',W/2,D/2+150,0,{w:tl,d:1200}),o=[t,O('outF',W/2,D/2+150,0)];
+      const top=Math.ceil(n/2),bot=n-top;
+      for(let i=0;i<top;i++)o.push(O('mchair',W/2-tl/2+(i+0.5)*tl/top,t.y-600-330,180));
+      for(let i=0;i<bot;i++)o.push(O('mchair',W/2-tl/2+(i+0.5)*tl/bot,t.y+600+330,0));
+      o.push(O('touch',W/2,450,0),O('vc',W/2,90,0),O('rj45',W/2+900,20,0),O('out',W/2-900,20,0),O('out',20,D/2,90),O('out',W-20,D/2,270),
+        O('weak',W-350,75,0),O('ac',900,125,0),O('door',W-700,D,0),...lights(W,D));return {W,D,objs:o}}},
+    {id:'eoc',n:'緊急應變會議室（U 型指揮）',cat:'辦公',W:8000,D:6400,np:12,kw:['緊急','應變','EOC','指揮','災害','防災','戰情'],gen:(W,D,n)=>{n=n||12;
+      const cap=(W,D)=>2*Math.floor((D-2600)/1400)+Math.floor((W-3600)/1400);
+      while(cap(W,D)<n&&W<30000){W+=1000;D+=600}
+      const o=[O('vwall',W/2,150,0,{w:Math.min(4000,W-3000)}),O('radio',1000,450,0),O('rack',W-400,600,0),O('ups',W-1100,550,0)];
+      const la=Math.floor((D-2600)/1400),ba=Math.floor((W-3600)/1400);let left=n;
+      const put=(x,y,r)=>{if(left<=0)return;const dk=O('eocdesk',x,y,r);o.push(dk,seat(dk,'chair'),O('outF',x,y,0));left--};
+      for(let i=0;i<la&&left>0;i++){put(1500,1500+i*1400+700,90);if(left>0)put(W-1500,1500+i*1400+700,270)}
+      for(let i=0;i<ba&&left>0;i++)put(1800+(i+0.5)*(W-3600)/ba,D-1500,0);
+      const c=O('cmd',W/2,D/2+200,0);o.push(c,seat(c,'chair'),O('outF',W/2,D/2+200,0));
+      o.push(O('weak',75,D/2+900,90),O('panel',75,D/2-900,90),O('ac2',W/2-2600,150,0),O('ac2',W/2+2600,150,0),
+        O('door2',900,D,0),O('exit',900,D-100,0),O('elight',W/2,D-100,0),O('elight',W/2,100,0),O('cctv',W-150,D-150,0),O('ap',W/2,D/2-600,0),...lights(W,D));
+      return {W,D,objs:o}}},
+    {id:'office',n:'開放式辦公室',cat:'辦公',W:8000,D:6000,np:12,kw:['辦公','辦公室','開放','工作區','座位'],gen:(W,D,n)=>{n=n||12;
+      let cols=Math.max(1,Math.floor((W-1600)/1400)),rows=Math.ceil(n/(2*cols));
+      /* 一組對坐工作站（含兩側椅子）上下各約 1.4m，列距 3m，最後一列下方留 1.2m 走道 */
+      while(1600+(rows-1)*3000+2605>D&&D<30000)D+=600;
+      const o=[];let left=n;
+      for(let r=0;r<rows;r++){const y0=1600+r*3000;for(let c=0;c<cols&&left>0;c++){const x=900+c*1400+700;
+        const a=O('desk',x,y0-350,180);o.push(a,seat(a));left--;
+        if(left>0){const b=O('desk',x,y0+350,0);o.push(b,seat(b));left--}
+        if(c%2===0)o.push(O('outF',x+700,y0,0))}}
+      o.push(O('printer',W-450,D-500,180),O('pod1',W-700,700,0),O('water',450,D-400,180),O('weak',W-1600,75,0),O('panel',W-2200,75,0),
+        O('ac2',W/3,150,0),O('ac2',W*2/3,150,0),O('door',900,D,0),O('ap',W/2,D/2,0),O('elight',W/2,D-100,0),O('exit',900,D-100,0),...lights(W,D));
+      return {W,D,objs:o}}},
+    {id:'agile',n:'互動協作空間',cat:'辦公',W:9000,D:7000,np:16,kw:['互動','協作','共創','腦力','創意','彈性','敏捷','討論'],gen:(W,D,n)=>{n=n||16;
+      const o=[],hx=Math.max(1,Math.min(3,Math.ceil(n/6)));
+      for(let i=0;i<hx;i++){const x=W*(i+0.5)/hx,y=D*0.42,h=O('hex',x,y,0);o.push(h,O('outF',x,y,0));
+        for(let j=0;j<6;j++){const a=j*60+30,[dx,dy]=rot(a,0,1150);o.push(O('mchair',x+dx,y+dy,(a+180)%360))}}
+      o.push(O('touch',W/2,500,0),O('wb',1100,D-900,0),O('wb',W-1100,D-900,0),O('bar',W/2,D-800,180),
+        O('stool',W/2-600,D-1300,0),O('stool',W/2,D-1300,0),O('stool',W/2+600,D-1300,0),O('bean',900,D*0.75,0),O('bean',1800,D*0.8,0),
+        O('pod1',W-700,D-1900,0),O('steps',1700,700,0),O('weak',W-900,75,0),O('ac2',W/3,150,0),O('ac2',W*2/3,150,0),
+        O('door2',W-1500,D,0),O('ap',W/2,D/2,0),...lights(W,D));return {W,D,objs:o}}},
+    {id:'boss',n:'主管辦公室',cat:'辦公',W:4500,D:4200,kw:['主管','老闆','董事長','經理','總經理'],gen:(W,D)=>{
+      const e=O('exec',W/2,1100,180);return {W,D,objs:[O('book',W/2,175,0,{w:Math.min(2700,W-600)}),e,seat(e,'chair'),
+        O('vchair',W/2-450,1100+450+450,0),O('vchair',W/2+450,1100+450+450,0),O('sofa3',1200,D-500,180,{w:2100}),O('tea',1200,D-1400,0),
+        O('outF',W/2,1100,0),O('rj45',W/2+600,20,0),O('out',20,1100,90),O('ac',W-600,125,0),O('door',W-700,D,0),...lights(W,D,'down')]}}},
+    {id:'training',n:'教育訓練室（翻板桌）',cat:'辦公',W:8000,D:7000,np:24,kw:['訓練','教室','上課','培訓','教育','講座'],gen:(W,D,n)=>{n=n||24;
+      const per=2,cols=Math.max(1,Math.floor((W-1200)/1900)),rows=Math.ceil(n/(per*cols));while(2200+rows*1500+900>D&&D<30000)D+=500;
+      const o=[O('touch',W/2,450,0),O('proj',W/2,1400,0)];let left=n;
+      for(let r=0;r<rows;r++)for(let c=0;c<cols&&left>0;c++){const t=O('flip',700+c*1900+800,2300+r*1500,0);o.push(t);
+        for(let s=0;s<per&&left>0;s++){o.push(seat(t,'mchair',s?400:-400));left--}}
+      o.push(O('out',20,D/2,90),O('out',W-20,D/2,270),O('ac2',W/3,150,0),O('ac2',W*2/3,150,0),O('door',W-800,D,0),O('exit',W-800,D-100,0),...lights(W,D));
+      return {W,D,objs:o}}},
+    {id:'kit1',n:'一字型廚房',cat:'廚房',W:3200,D:2600,kw:['一字','廚房','廚具'],gen:(W,D)=>{const L=Math.min(3000,W-900);
+      return {W,D,objs:[O('k1',L/2,300,0,{w:L}),O('sink',L*0.3,300,0),O('ih',L*0.75,300,0),O('hood',L*0.75,250,0),O('fridge',W-400,400,0),
+        O('outW',L*0.5,20,0),O('outW',L*0.95,20,0),O('micro',L*0.1,300,0),O('door',W-600,D,0),O('led',W/2,D*0.6,0)]}}},
+    {id:'kitL',n:'L 型廚房',cat:'廚房',W:3200,D:3000,kw:['L型','L 型','廚房'],gen:(W,D)=>{const a=Math.min(2600,W-800),b=Math.min(2200,D-800);
+      return {W,D,objs:[O('kL',a/2,b/2,0,{w:a,d:b}),O('sink',a*0.6,300,0),O('ih',300,b*0.6,90),O('hood',260,b*0.6,90),O('fridge',W-400,400,0),
+        O('outW',a*0.3,20,0),O('outW',20,b*0.9,90),O('out220',a*0.9,20,0),O('oven',a*0.9,300,0),O('door',W-600,D,0),O('led',W*0.6,D*0.6,0)]}}},
+    {id:'kitI',n:'中島廚房（含餐桌）',cat:'廚房',W:4500,D:4200,kw:['中島','開放式廚房','餐廚'],gen:(W,D)=>{const L=Math.min(3400,W-1100);
+      const o=[O('k1',L/2+100,300,0,{w:L}),O('sink',L*0.35,300,0),O('ih',L*0.75,300,0),O('hood',L*0.75,250,0),O('fridgeB',W-500,450,0),
+        O('islandS',W/2,1900,0),O('dish',W/2-600,1900,0),O('outW',L*0.5,20,0),O('outW',L*0.95,20,0),O('outF',W/2+700,1900,0),O('out220',L*0.1,20,0),O('oven',L*0.1,300,0)];
+      for(let i=-1;i<=1;i++)o.push(O('stool',W/2+i*600,1900+500+300,0));
+      if(D>=3900){const t=O('dtable',W/2,D-800,0);o.push(t,seat(t,'dchair',-400,260),seat(t,'dchair',400,260),O('dchair',W/2-750-300,D-800,90),O('dchair',W/2+750+300,D-800,270))}
+      o.push(O('door',W,D-700,270),...lights(W,D,'down'));return {W,D,objs:o}}},
+    {id:'bath',n:'乾濕分離浴室（淋浴）',cat:'浴室',W:2400,D:1800,kw:['浴室','衛浴','廁所','乾濕分離','淋浴'],gen:(W,D)=>{W=Math.max(W,2000);D=Math.max(D,1500);
+      return {W,D,objs:[O('basin',450,260,0),O('wcE',1250,360,0),O('shower',W-480,D/2,0,{w:900,d:D}),O('glassS',W-950,D/2,90,{w:D}),
+        O('heatfan',W/2,D/2,0),O('outW',450,20,0),O('outW',900,20,0),O('door',600,D,0,{w:800}),O('down',450,D*0.6,0)]}}},
+    {id:'bath2',n:'浴缸浴室',cat:'浴室',W:2800,D:2100,kw:['浴缸','泡澡'],gen:(W,D)=>({W,D,objs:[O('tub',W-770,390,0),O('glass',W-1550,D/2,90,{w:D-200}),
+      O('basin2',900,290,0,{w:1200}),O('wcE',450,D-400,180),O('heatfan',W/2,D/2,0),O('outW',900,20,0),O('outW',20,D-400,90),O('door',W-600,D,0,{w:800}),O('down',W/2,D/2+300,0)]})},
+    {id:'suite',n:'套房（臥室＋工作區）',cat:'住宅',W:4000,D:3800,kw:['套房','臥室','房間','主臥','雅房'],gen:(W,D)=>({W,D,objs:[O('bedD',W/2,1000,0),
+      O('nstand',W/2-1000,300,0),O('nstand',W/2+1000,300,0),O('ward',W-330,D/2,270,{w:1800}),O('desk12',800,D-400,180),O('chair',800,D-1050,180),
+      O('tvcab',W/2,D-250,180,{w:1200}),O('out',W/2-1000,20,0),O('out',W/2+1000,20,0),O('out',900,D-20,180),O('ac',W/2,125,0),O('door',W-600,D,0),O('led',W/2,D/2,0)]})},
+    {id:'living',n:'客廳',cat:'住宅',W:5000,D:4200,kw:['客廳','起居'],gen:(W,D)=>({W,D,objs:[O('tvcab',W/2,250,0),O('tv',W/2,60,0),O('sofa3',W/2,D-550,180),
+      O('sofa1',700,D/2+300,90),O('tea',W/2,D/2+300,0),O('out',W/2-800,20,0),O('out',W/2+800,20,0),O('rj45',W/2,20,0),O('out',W/2,D-20,180),
+      O('ac2',W-800,150,0),O('door',W-700,D,0),O('win',W/2,0,180,{w:2400}),...lights(W,D,'down')]})}
+  ];
+  const tplBy=Object.fromEntries(TPL.map(t=>[t.id,t]));
+  const inRange=(v,a,b)=>Math.min(b,Math.max(a,v));
+  function make(id,W,D,n){const t=tplBy[id]||tplBy.blank;const r=t.gen(inRange(Math.round(W||t.W),1200,30000),inRange(Math.round(D||t.D),1200,30000),n||t.np);
+    return {tpl:t.id,W:Math.round(r.W),D:Math.round(r.D),objs:r.objs}}
+
+  /* ---------- 構想文字解析（沒有 AI 時的本機規則） ---------- */
+  const CN={零:0,一:1,二:2,兩:2,三:3,四:4,五:5,六:6,七:7,八:8,九:9};
+  function cnNum(s){if(/^\d+$/.test(s))return +s;if(s==='十')return 10;const m=s.match(/^([一二兩三四五六七八九])?十([一二三四五六七八九])?$/);
+    if(m)return (m[1]?CN[m[1]]:1)*10+(m[2]?CN[m[2]]:0);return s.length===1&&CN[s]!=null?CN[s]:null}
+  const toMM=(v,u)=>{v=+v;if(!(v>0))return null;u=(u||'').toLowerCase();
+    if(/^(米|m|公尺)$/.test(u))return v*1000;if(/^(cm|公分)$/.test(u))return v*10;if(u==='mm'||u==='公釐')return v;
+    return v<=30?v*1000:v<=3000?v*10:v};
+  function parseIdea(text){const t=String(text||'').replace(/[，,；;]/g,' ');let W=null,D=null,n=null;
+    const U='(米|公尺|m|cm|公分|mm|公釐)?';
+    let m=t.match(new RegExp('(\\d+(?:\\.\\d+)?)\\s*'+U+'\\s*(?:[xX×＊*]|乘|by)\\s*(\\d+(?:\\.\\d+)?)\\s*'+U,'i'));
+    if(m){W=toMM(m[1],m[2]||m[4]);D=toMM(m[3],m[4]||m[2])}
+    else{const a=t.match(new RegExp('(?:長|寬)\\s*(\\d+(?:\\.\\d+)?)\\s*'+U)),b=t.match(new RegExp('(?:深|寬)\\s*(\\d+(?:\\.\\d+)?)\\s*'+U,'g'));
+      if(a)W=toMM(a[1],a[2]);if(b&&b.length){const bb=b[b.length-1].match(new RegExp('(\\d+(?:\\.\\d+)?)\\s*'+U));if(bb&&b[b.length-1]!==(a&&a[0]))D=toMM(bb[1],bb[2])}}
+    if(!W){const p=t.match(/(\d+(?:\.\d+)?)\s*坪/);if(p){const A=+p[1]*3.3058*1e6;W=Math.sqrt(A*4/3);D=A/W}}
+    const pm=t.match(/(\d+|[一二兩三四五六七八九十]{1,3})\s*(?:人|位|個座位|席)/);if(pm)n=cnNum(pm[1]);
+    const low=t.toLowerCase();let best=null,sc=0;
+    for(const tp of TPL){let s=0;for(const k of tp.kw)if(low.includes(k.toLowerCase()))s+=k.length>=2?2:1;
+      if(tp.id==='eoc'&&s)s+=5;if(tp.id==='kitI'&&/中島/.test(t))s+=5;if(tp.id==='kitL'&&/l\s*型/i.test(t))s+=5;if(tp.id==='bath2'&&/浴缸/.test(t))s+=5;
+      if(s>sc){sc=s;best=tp}}
+    return {tpl:best?best.id:(n?'meet':'blank'),W:W&&Math.round(W),D:D&&Math.round(D),n,matched:!!best}}
+  function fromIdea(text){const q=parseIdea(text),r=make(q.tpl,q.W,q.D,q.n);return {...r,n:q.n,matched:q.matched}}
+
+  /* ---------- 整案範本（門窗組） ---------- */
+  const PROJ=[
+    {id:'apt3',n:'公寓三房兩廳（門窗組）',items:[['slide','客廳',{W:2400,H:1500,panels:4,screen:true,series:'氣密窗'}],['slide','主臥',{W:1800,H:1200,series:'氣密窗'}],
+      ['slide','次臥',{W:1500,H:1200,series:'氣密窗'}],['slide','小孩房',{W:1500,H:1200,series:'氣密窗'}],['casement','浴室',{W:600,H:600,glass:'5mm 霧面玻璃'}],
+      ['casement','廚房',{W:900,H:900}],['door','前門',{W:1000,H:2100,style:'玄關門（含側窗）'}],['door','陽台',{W:1800,H:2200,style:'橫拉門'}]]},
+    {id:'house',n:'透天厝（門窗＋頂樓採光罩）',items:[['door','前門',{W:1500,H:2400,style:'子母門'}],['slide','客廳',{W:3000,H:2000,panels:4,series:'隔音氣密窗'}],
+      ['fixed','樓梯間',{W:900,H:1800,rows:2}],['slide','主臥',{W:1800,H:1500,series:'氣密窗'}],['shaped','前立面',{W:1200,H:1500,form:'拱形窗'}],
+      ['louver','後陽台',{W:1200,H:1000}],['canopy','頂樓',{}]]},
+    {id:'office',n:'辦公室裝修（門窗＋平面）',items:[['door','大門',{W:1800,H:2400,style:'自動感應門'}],['door','會議室',{W:900,H:2100,style:'單開'}],
+      ['fixed','會議室隔間',{W:3000,H:2400,cols:3}],['room','會議室',{tpl:'meet'}],['room','辦公區',{tpl:'office'}],['room','應變中心',{tpl:'eoc'}]]}
+  ];
+  return {CATS,C,byK,search,elec,load,NFB,WIRE,BUS,pickNFB,pickWire,TPL,tplBy,make,parseIdea,fromIdea,cnNum,toMM,PROJ,rot,oid};
+})();
+/*@@PURE-END*/
+
 
 /* ================= 工具 ================= */
 const $=s=>document.querySelector(s);
@@ -310,11 +609,13 @@ function newItem(type){const t=TYPES[type];const p=JSON.parse(JSON.stringify(t.d
 /* ================= 計算 ================= */
 function metrics(it){const p=it.p,q=it.qty||1;
   if(it.type==='canopy')return canopyMetrics(it);
+  if(it.type==='room'){const o=(+p.RW||0)*(+p.RD||0)/1e6;return {room:true,one:o,m2:o*q,ping:o*q/3.3058,n:(p.objs||[]).length}}
   const one=((+p.W||0)/10)*((+p.H||0)/10)/918.09;return {one,cai:one*q};
 }
 function triSpread(p,key){const v=[p[key+'1'],p[key+'2'],p[key+'3']].map(Number).filter(x=>x>0);return v.length?Math.max(...v)-Math.min(...v):0}
 function warnings(it){const p=it.p,w=[];
   if(it.type==='canopy')return canopyWarnings(it);
+  if(it.type==='room')return roomWarnings(it);
   {
     if(p.tri){const dw=triSpread(p,'W'),dh=triSpread(p,'H');
       if(dw>5)w.push(`寬度上中下相差 ${dw} mm，開口不正，已取最小值`);
@@ -324,19 +625,20 @@ function warnings(it){const p=it.p,w=[];
   }
   return w;
 }
-const qtyUnit=it=>it.type==='canopy'?'組':'樘';
-function sizeText(it){const p=it.p;if(it.type==='canopy'){const M=canopyModel(p);return `${fmtLen(M.Lx)} × ${fmtLen(M.y1)}`}return `${fmtLen(p.W)} × ${fmtLen(p.H)}`}
-function amountText(it){const m=metrics(it);return m.canopy?`${m.m2.toFixed(2)} m²`:`${m.cai.toFixed(1)} 才`}
-function totals(p){let cai=0,m2=0;for(const it of p.items){const m=metrics(it);if(m.canopy)m2+=m.m2;else cai+=m.cai}return {cai,m2}}
+const qtyUnit=it=>it.type==='canopy'?'組':it.type==='room'?'間':'樘';
+function sizeText(it){const p=it.p;if(it.type==='room')return `${fmtLen(p.RW)} × ${fmtLen(p.RD)}`;if(it.type==='canopy'){const M=canopyModel(p);return `${fmtLen(M.Lx)} × ${fmtLen(M.y1)}`}return `${fmtLen(p.W)} × ${fmtLen(p.H)}`}
+function amountText(it){const m=metrics(it);return m.room?`${m.m2.toFixed(1)} m²`:m.canopy?`${m.m2.toFixed(2)} m²`:`${m.cai.toFixed(1)} 才`}
+function totals(p){let cai=0,m2=0,rm2=0;for(const it of p.items){const m=metrics(it);if(m.room)rm2+=m.m2;else if(m.canopy)m2+=m.m2;else cai+=m.cai}return {cai,m2,rm2}}
 const hasPrices=()=>Object.values(settings.prices).some(v=>+v>0);
 function itemQuote(it){const pr=+(settings.prices[it.type]||0),m=metrics(it);
-  if(m.canopy){const u=m.one/3.3058;return {u:'坪',each:u,q:u*it.qty,price:pr,amt:Math.round(u*it.qty*pr)}}
+  if(m.canopy||m.room){const u=m.one/3.3058;return {u:'坪',each:u,q:u*it.qty,price:pr,amt:Math.round(u*it.qty*pr)}}
   const c=Math.max(m.one,+settings.minCai||0);return {u:'才',each:c,q:c*it.qty,price:pr,amt:Math.round(c*it.qty*pr)}}
 function quoteTotals(p){let sub=0;for(const it of p.items)sub+=itemQuote(it).amt;sub+=(+p.extra||0);
   const tax=settings.tax?Math.round(sub*0.05):0;return {sub,tax,total:sub+tax}}
 function specText(it){const p=it.p,t=TYPES[it.type].n;
+  if(it.type==='room')return `${t} ${fmtLen(p.RW)}×${fmtLen(p.RD)} ${roomGroup(p.objs).slice(0,6).map(([n,c])=>n+'×'+c).join('、')}`;
   if(it.type==='canopy'){const M=canopyModel(p);return `${t}（${p.shape}）${fmtLen(M.Lx)}×${fmtLen(M.y1)} 後高${fmtLen(M.Hb)} 前高${fmtLen(M.Hf)} ${p.panel} ${p.frame}${M.enc.length?' 含封邊':''}`}
-  const ex=it.type==='slide'?`${p.panels}扇`:it.type==='fixed'?`${p.cols}×${p.rows}分割`:it.type==='casement'?`${p.sash}扇${p.dir}`:it.type==='louver'?`${p.cols}分割`:p.style;
+  const ex=it.type==='slide'?`${p.panels}扇`:it.type==='fixed'?`${p.cols}×${p.rows}分割`:it.type==='casement'?`${p.sash}扇${p.dir}`:it.type==='louver'?`${p.cols}分割`:it.type==='shaped'?p.form:p.style;
   return `${t} ${fmtLen(p.W)}×${fmtLen(p.H)} ${ex}${p.series?' '+p.series:''}${p.glass?' '+p.glass:''} ${p.color}${p.screen?' 附紗窗':''}`;
 }
 /* ================= 圖面引擎（一份幾何，同時輸出 SVG / DXF） ================= */
@@ -344,7 +646,7 @@ const FONT="'PingFang TC','Heiti TC','Noto Sans TC',sans-serif";
 const FILL={sash:'#F4F6F8',glass:'#E3F0F7',wall:'#CBD2D9',ink:'#1B2430',white:'#FFFFFF',hatch:'#FCEFC2',hole:'#FDE2E2'};
 const LS={FRAME:{s:'#1B2430',w:1,c:7},SASH:{s:'#1B2430',w:1,c:7},GLASS:{s:'#1B2430',w:.7,c:4},
   HIDDEN:{s:'#6B7785',w:1,dash:1,c:8},DIM:{s:'#0B7285',w:.75,c:3},TEXT:{s:'#1B2430',w:1,c:7},
-  NOTE:{s:'#6B7785',w:1,c:8},WALL:{s:'#6B7785',w:.6,c:8},GRID:{s:'#5D6B7A',w:.6,c:8},GROUND:{s:'#6B7785',w:1.2,c:8},TITLE:{s:'#1B2430',w:1,c:7},OBS:{s:'#C0392B',w:1,c:1},GUTTER:{s:'#2B6CB0',w:2.2,c:5}};
+  NOTE:{s:'#6B7785',w:1,c:8},WALL:{s:'#6B7785',w:.6,c:8},GRID:{s:'#5D6B7A',w:.6,c:8},GROUND:{s:'#6B7785',w:1.2,c:8},TITLE:{s:'#1B2430',w:1,c:7},OBS:{s:'#C0392B',w:1,c:1},HIT:{s:'none',w:1,c:7},GUTTER:{s:'#2B6CB0',w:2.2,c:5}};
 const tw=(s,size)=>{let w=0;for(const ch of String(s))w+=ch.charCodeAt(0)<128?0.56:1;return w*size};
 
 class Dw{
@@ -377,7 +679,40 @@ class Dw{
 }
 
 /* ---------- 門窗 ---------- */
+/* ---------- 造型窗：外框依造型畫多邊形，玻璃用內縮外框 ---------- */
+function bShaped(it){
+  const p=it.p,W=Math.max(+p.W||0,50),H=Math.max(+p.H||0,50),k=Math.max(W,H),d=new Dw(k),f=k*0.028,fs=k*0.034,form=p.form;
+  const outline=g=>{const x0=g,y0=g,x1=W-g,y1=H-g,w=x1-x0,h=y1-y0;
+    if(form==='拱形窗'){const r=w/2,ry=Math.min(r,h),cy=y0+ry,pts=[[x0,y1],[x0,cy]];for(let i=1;i<24;i++){const a=Math.PI+Math.PI*i/24;pts.push([x0+r+r*Math.cos(a),cy+ry*Math.sin(a)])}pts.push([x1,cy],[x1,y1]);return pts}
+    if(form==='圓窗'){const rx=w/2,ry=h/2;return Array.from({length:40},(_,i)=>{const a=2*Math.PI*i/40;return [x0+rx+rx*Math.cos(a),y0+ry+ry*Math.sin(a)]})}
+    if(form==='八角窗'){const cx=w*0.2929,cy=h*0.2929;return [[x0+cx,y0],[x1-cx,y0],[x1,y0+cy],[x1,y1-cy],[x1-cx,y1],[x0+cx,y1],[x0,y1-cy],[x0,y0+cy]]}
+    if(form==='斜頂梯形窗')return [[x0,y1],[x0,y0+h*0.35],[x1,y0],[x1,y1]];
+    return [[x0,y0],[x1,y0],[x1,y1],[x0,y1]]};
+  d.poly(outline(0),'FRAME','sash',true,1.4);
+  const ix=f,iy=f,iw=W-2*f,ih=H-2*f;let yb=H+k*0.08;
+  const vee=(x,y,w,h,apex)=>{if(apex==='left'){d.line(x+w,y,x,y+h/2,'HIDDEN');d.line(x+w,y+h,x,y+h/2,'HIDDEN')}
+    else if(apex==='right'){d.line(x,y,x+w,y+h/2,'HIDDEN');d.line(x,y+h,x+w,y+h/2,'HIDDEN')}
+    else if(apex==='bottom'){d.line(x,y,x+w/2,y+h,'HIDDEN');d.line(x+w,y,x+w/2,y+h,'HIDDEN')}
+    else{d.line(x,y+h,x+w/2,y,'HIDDEN');d.line(x+w,y+h,x+w/2,y,'HIDDEN')}};
+  if(['拱形窗','圓窗','八角窗','斜頂梯形窗'].includes(form)){d.poly(outline(f),'GLASS','glass',true,0.7);
+    if(form==='拱形窗'){const cy=f+Math.min(iw/2,ih);d.line(f,cy,W-f,cy,'SASH',1.2);d.line(W/2,f,W/2,cy,'SASH',0.8)}
+    if(form==='圓窗'||form==='八角窗'){d.line(W/2,f,W/2,H-f,'SASH');d.line(f,H/2,W-f,H/2,'SASH')}
+    d.text(W/2,H*0.72,'固定',fs,'NOTE')}
+  else if(form==='內開內倒窗'||form==='上懸窗'){d.rect(ix,iy,iw,ih,'SASH','sash');d.rect(ix+f*0.6,iy+f*0.6,iw-f*1.2,ih-f*1.2,'GLASS','glass',0.7);
+    if(form==='內開內倒窗'){vee(ix,iy,iw,ih,p.hinge==='右'?'right':'left');vee(ix,iy,iw,ih,'bottom');d.text(W/2,H*0.5,'內開內倒',fs,'NOTE')}
+    else{vee(ix,iy,iw,ih,'top');d.text(W/2,H*0.62,'上懸外推',fs,'NOTE')}}
+  else if(form==='折疊窗'){const n=Math.max(3,Math.round(iw/500)),pw=iw/n;
+    for(let i=0;i<n;i++){const x=ix+i*pw;d.rect(x,iy,pw,ih,'SASH','sash');d.rect(x+f*0.5,iy+f*0.5,pw-f,ih-f,'GLASS','glass',0.7)}
+    const zz=[];for(let i=0;i<=n;i++)zz.push([ix+i*pw,H+k*0.03+(i%2?k*0.04:0)]);d.poly(zz,'HIDDEN',null,false);d.text(W/2,H+k*0.11,'折疊方向（平面示意）',fs*0.7,'NOTE');yb+=k*0.1}
+  else{/* 凸窗（三面）：正面中間固定、兩側推射 */const sw=iw*0.22;
+    for(const [x,w,t] of [[ix,sw,'side'],[ix+sw,iw-2*sw,'mid'],[ix+iw-sw,sw,'side']]){d.rect(x,iy,w,ih,'SASH','sash');d.rect(x+f*0.5,iy+f*0.5,w-f,ih-f,'GLASS','glass',0.7);
+      if(t==='side')vee(x,iy,w,ih,x<W/2?'left':'right');else d.text(x+w/2,H*0.55,'固定',fs,'NOTE')}
+    const g=H+k*0.04,dep=Math.min(W*0.25,k*0.12);d.poly([[0,g],[sw+f,g+dep],[W-sw-f,g+dep],[W,g]],'HIDDEN',null,false);d.text(W/2,g+dep+fs*1.2,'凸窗平面示意',fs*0.7,'NOTE');yb+=dep+k*0.08}
+  d.dimH(0,W,yb,H,fmtLen(W));d.dimV(0,H,W+k*0.08,W,fmtLen(H));
+  return d;
+}
 function bWin(it){
+  if(it.type==='shaped')return bShaped(it);
   const p=it.p,W=Math.max(+p.W||0,50),H=Math.max(+p.H||0,50),k=Math.max(W,H),d=new Dw(k);
   const f=k*0.028,fs=k*0.034;
   const glass=(x,y,w,h)=>d.rect(x,y,w,h,'GLASS','glass',0.7);
@@ -409,9 +744,21 @@ function bWin(it){
     if(t>0){glass(ix,iy,iw,t-f*1.35);d.rect(ix,iy+t-f*1.35,iw,f*0.7,'SASH','sash');dy=iy+t-f*0.65;dh=ih-(t-f*0.65);cL=[t,H-t]}
     const leaf=(x,w,hl)=>{d.rect(x,dy,w,dh,'SASH','sash');glass(x+f*0.8,dy+f*0.8,w-f*1.6,dh*0.6);
       d.circle(hl?x+w-f*1.4:x+f*1.4,dy+dh*0.55,k*0.012,'TEXT','ink');vee(x,dy,w,dh,hl?'left':'right')};
-    if(p.style==='雙開'){leaf(ix,iw/2,true);leaf(ix+iw/2,iw/2,false)}
-    else if(p.style==='橫拉門'){for(let i=0;i<2;i++){const x=ix+i*iw/2;d.rect(x,dy,iw/2,dh,'SASH','sash');glass(x+f*0.7,dy+f*0.7,iw/2-f*1.4,dh-f*1.4);
-      const cx=x+iw/4,s=i===0?1:-1;d.arrow(cx-s*iw*0.09,dy+dh/2,cx+s*iw*0.09,dy+dh/2)}}
+    const st=p.style,slide=(n,out)=>{const pw=iw/n;for(let i=0;i<n;i++){const x=ix+i*pw;d.rect(x,dy,pw,dh,'SASH','sash');glass(x+f*0.7,dy+f*0.7,pw-f*1.4,dh-f*1.4);
+      const cx=x+pw/2,s=(i<n/2?1:-1)*(out?-1:1);d.arrow(cx-s*pw*0.18,dy+dh/2,cx+s*pw*0.18,dy+dh/2)}};
+    if(st==='雙開'){leaf(ix,iw/2,true);leaf(ix+iw/2,iw/2,false)}
+    else if(st==='子母門'){const a=iw*0.65;leaf(ix,a,true);leaf(ix+a,iw-a,false);d.text(ix+a+(iw-a)/2,dy+dh*0.2,'子',fs,'NOTE');d.text(ix+a/2,dy+dh*0.2,'母',fs,'NOTE')}
+    else if(st==='橫拉門')slide(2);
+    else if(st==='雙橫拉門')slide(4);
+    else if(st==='自動感應門'){slide(2,true);d.rect(W/2-k*0.06,dy-k*0.035,k*0.12,k*0.03,'OBS','white');d.text(W/2,dy-k*0.045,'感應器',fs*0.8,'OBS')}
+    else if(st==='折疊門'){const n=Math.max(3,Math.round(iw/450)),pw=iw/n;
+      for(let i=0;i<n;i++){const x=ix+i*pw;d.rect(x,dy,pw,dh,'SASH','sash');glass(x+f*0.6,dy+f*0.6,pw-f*1.2,dh*0.55)}
+      const zz=[];for(let i=0;i<=n;i++)zz.push([ix+i*pw,H+k*0.03+(i%2?k*0.035:0)]);d.poly(zz,'HIDDEN',null,false);d.text(W/2,dy+dh*0.8,'折疊門',fs,'NOTE')}
+    else if(st==='穀倉門'){const x0=ix-f*1.5,w0=iw+f*3;d.line(-k*0.04,-k*0.03,W+iw*0.9,-k*0.03,'TEXT',2.2);
+      d.rect(x0,dy-f*0.5,w0,dh+f*0.3,'SASH','sash',1.3);d.line(x0,dy-f*0.5,x0+w0,dy+dh-f*0.2,'GRID',1.2);d.line(x0+w0,dy-f*0.5,x0,dy+dh-f*0.2,'GRID',1.2);
+      for(const x of [x0+w0*0.2,x0+w0*0.8])d.circle(x,-k*0.03,k*0.012,'TEXT','white');d.arrow(W/2,dy+dh*0.5,W/2+iw*0.35,dy+dh*0.5);d.text(W/2,dy+dh*0.35,'穀倉門（外掛滑軌）',fs*0.8,'NOTE')}
+    else if(st==='防火門'){leaf(ix,iw,p.hinge!=='右');d.text(W/2,dy+dh*0.8,'防火門',fs,'OBS')}
+    else if(st==='玄關門（含側窗）'){const sw=iw*0.28;glass(ix,dy,sw-f*0.5,dh);d.rect(ix+sw-f*0.5,dy,f*0.7,dh,'SASH','sash');leaf(ix+sw+f*0.2,iw-sw-f*0.2,p.hinge!=='右')}
     else leaf(ix,iw,p.hinge!=='右');
     d.line(-k*0.06,H,W+k*0.06,H,'GROUND')}
   let yb=H+k*0.08+(it.type==='louver'?fs*1.2:0);
@@ -422,7 +769,7 @@ function bWin(it){
   return d;
 }
 
-const build=it=>it.type==='canopy'?bCanopy(it):bWin(it);
+const build=it=>it.type==='canopy'?bCanopy(it):it.type==='room'?bRoom(it):bWin(it);
 
 /* ---------- SVG 輸出 ---------- */
 function toSVG(d,pw,ph){
@@ -430,7 +777,7 @@ function toSVG(d,pw,ph){
   for(const q of d.p){const st=LS[q.L]||LS.FRAME,sw=r1(base*st.w*(q.sw||1)),stroke=st.s,ds=st.dash?dash:'';
     if(q.t==='l')o+=`<line x1="${r1(q.x1)}" y1="${r1(q.y1)}" x2="${r1(q.x2)}" y2="${r1(q.y2)}" stroke="${stroke}" stroke-width="${sw}"${ds}/>`;
     else if(q.t==='r')o+=`<rect x="${r1(q.x)}" y="${r1(q.y)}" width="${r1(q.w)}" height="${r1(q.h)}" fill="${q.fill?FILL[q.fill]:'none'}" stroke="${stroke}" stroke-width="${sw}"${ds}/>`;
-    else if(q.t==='p')o+=`<${q.close?'polygon':'polyline'} points="${q.pts.map(([x,y])=>r1(x)+','+r1(y)).join(' ')}" fill="${q.fill?FILL[q.fill]:'none'}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round"${ds}${q.tag?` data-cell="${q.tag}"`:''}/>`;
+    else if(q.t==='p')o+=`<${q.close?'polygon':'polyline'} points="${q.pts.map(([x,y])=>r1(x)+','+r1(y)).join(' ')}" fill="${q.fill?FILL[q.fill]:'none'}" stroke="${stroke}" stroke-width="${sw}" stroke-linejoin="round" stroke-linecap="round"${ds}${q.tag?(q.tag.startsWith('o:')?` data-obj="${esc(q.tag.slice(2))}"`:` data-cell="${q.tag}"`):''}/>`;
     else if(q.t==='c')o+=`<circle cx="${r1(q.cx)}" cy="${r1(q.cy)}" r="${r1(q.r)}" fill="${q.fill?FILL[q.fill]:'none'}" stroke="${stroke}" stroke-width="${sw}"/>`;
     else if(q.t==='t'){const a=`font-size="${r1(q.size)}" fill="${stroke}" text-anchor="${q.anchor}" font-family="${FONT}"${q.bold?' font-weight="700"':''}`;
       o+=q.rot?`<text transform="translate(${r1(q.x)} ${r1(q.y)}) rotate(${q.rot})" ${a}>${esc(q.s)}</text>`:`<text x="${r1(q.x)}" y="${r1(q.y)}" ${a}>${esc(q.s)}</text>`}
@@ -438,7 +785,7 @@ function toSVG(d,pw,ph){
   const size=pw?`width="${pw}" height="${ph}"`:'';
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${r1(b.x)} ${r1(b.y)} ${r1(b.w)} ${r1(b.h)}" ${size} preserveAspectRatio="xMidYMid meet"><rect x="${r1(b.x)}" y="${r1(b.y)}" width="${r1(b.w)}" height="${r1(b.h)}" fill="#fff"/>${o}</svg>`;
 }
-const drawItem=it=>toSVG(build(it));
+const drawItem=it=>toSVG(it.type==='room'?bRoom(it,view.sel||''):build(it));
 
 /* ---------- 圖框 + 標題欄（DXF 用） ---------- */
 function addSheet(d,info){
@@ -469,14 +816,14 @@ function toDXF(d){
   const dl=Math.max(20,d.k*0.02),gl=Math.max(10,d.k*0.012);
   g(0,'LTYPE');g(2,'DASHED');g(70,0);g(3,'__ __ __');g(72,65);g(73,2);g(40,dl+gl);g(49,dl);g(49,-gl);
   g(0,'ENDTAB');
-  const layers=Object.keys(LS);g(0,'TABLE');g(2,'LAYER');g(70,layers.length);
+  const layers=Object.keys(LS).filter(n=>n!=='HIT');g(0,'TABLE');g(2,'LAYER');g(70,layers.length);
   for(const n of layers){g(0,'LAYER');g(2,n);g(70,0);g(62,LS[n].c);g(6,LS[n].dash?'DASHED':'CONTINUOUS')}
   g(0,'ENDTAB');
   g(0,'TABLE');g(2,'STYLE');g(70,1);g(0,'STYLE');g(2,'CJK');g(70,0);g(40,0);g(41,1);g(50,0);g(71,0);g(42,2.5);g(3,'txt');g(4,'chineset.shx');g(0,'ENDTAB');
   g(0,'ENDSEC');
   g(0,'SECTION');g(2,'ENTITIES');
   const line=(x1,y1,x2,y2,L)=>{g(0,'LINE');g(8,L);g(10,x1);g(20,Y(y1));g(30,0);g(11,x2);g(21,Y(y2));g(31,0)};
-  for(const q of d.p){
+  for(const q of d.p){if(q.L==='HIT')continue;
     if(q.t==='l')line(q.x1,q.y1,q.x2,q.y2,q.L);
     else if(q.t==='r'){const {x,y,w,h}=q;line(x,y,x+w,y,q.L);line(x+w,y,x+w,y+h,q.L);line(x+w,y+h,x,y+h,q.L);line(x,y+h,x,y,q.L)}
     else if(q.t==='p'){for(let i=0;i<q.pts.length-1;i++)line(...q.pts[i],...q.pts[i+1],q.L);if(q.close&&q.pts.length>2)line(...q.pts[q.pts.length-1],...q.pts[0],q.L)}
@@ -781,6 +1128,131 @@ function bCanopy(it){
   return d;
 }
 
+
+/* ================= 室內平面圖：繪圖、3D、用電表 ================= */
+const objCat=o=>ROOM.byK[o.k]||{n:o.k,w:500,d:500,h:800,s:'rect',c:''};
+const objSize=o=>{const c=objCat(o);return {w:+o.w>0?+o.w:c.w,d:+o.d>0?+o.d:c.d,c}};
+const shortName=n=>String(n).replace(/（.*?）/g,'').replace(/\s+/g,'');
+function roomGroup(objs){const m=new Map();for(const o of objs||[]){const n=o.label||objCat(o).n;m.set(n,(m.get(n)||0)+1)}return [...m.entries()]}
+function roomWarnings(it){const p=it.p,w=[],W=+p.RW||0,D=+p.RD||0;
+  if(!(p.objs||[]).length)w.push('還沒有擺放家具設備：可以套用範本或輸入構想快速產生');
+  const out=(p.objs||[]).filter(o=>o.x<0||o.x>W||o.y<0||o.y>D);if(out.length)w.push(`${out.length} 件物件超出房間範圍：${out.slice(0,3).map(o=>shortName(objCat(o).n)).join('、')}`);
+  const e=ROOM.elec(p.objs);if(e.Imain>100)w.push(`估算主幹電流 ${Math.round(e.Imain)}A，可能超過一般住宅契約容量`);
+  return w}
+function drawObj(d,o,t,fs,k,hit){
+  const {w,d:dd,c}=objSize(o),s=c.s||'rect',r=+o.r||0,hw=w/2,hd=dd/2;
+  const P=(lx,ly)=>{const [a,b]=ROOM.rot(r,lx,ly);return [o.x+a,o.y+b]};
+  const Rr=(x0,y0,x1,y1,L,fill,sw)=>d.poly([P(x0,y0),P(x1,y0),P(x1,y1),P(x0,y1)],L||'SASH',fill===undefined?'sash':fill,true,sw||0.8);
+  const Ln=(x0,y0,x1,y1,L,sw)=>{const a=P(x0,y0),b=P(x1,y1);d.line(a[0],a[1],b[0],b[1],L||'SASH',sw||0.8)};
+  const Cc=(lx,ly,rad,L,fill)=>{const q=P(lx,ly);d.circle(q[0],q[1],rad,L||'SASH',fill||null)};
+  const El=(cx,cy,rx,ry,L,fill)=>d.poly(Array.from({length:24},(_,i)=>{const a=2*Math.PI*i/24;return P(cx+rx*Math.cos(a),cy+ry*Math.sin(a))}),L||'SASH',fill||null,true,0.8);
+  const arc=(cx,cy,rad,a0,a1)=>{const pts=[];for(let i=0;i<=16;i++){const a=(a0+(a1-a0)*i/16)*Math.PI/180;pts.push(P(cx+rad*Math.cos(a),cy+rad*Math.sin(a)))}d.poly(pts,'HIDDEN',null,false,0.8)};
+  const sym=Math.max(k*0.009,45);let label=true;
+  switch(s){
+    case 'desk':Rr(-hw,-hd,hw,hd);Ln(-hw,-hd+dd*0.12,hw,-hd+dd*0.12,'GRID',0.6);break;
+    case 'desk2m':Rr(-hw,-hd,hw,hd);Rr(-w*0.32,-hd+50,-w*0.03,-hd+110,'TEXT','ink');Rr(w*0.03,-hd+50,w*0.32,-hd+110,'TEXT','ink');break;
+    case 'deskL':case 'counterL':{const a=s==='deskL'?700:600;d.poly([[-hw,-hd],[hw,-hd],[hw,-hd+a],[-hw+a,-hd+a],[-hw+a,hd],[-hw,hd]].map(q=>P(q[0],q[1])),'SASH','sash',true,0.8);break}
+    case 'bench':Rr(-hw,-hd,hw,hd);Ln(-hw,0,hw,0,'FRAME',1.6);Ln(0,-hd,0,hd,'GRID');break;
+    case 'chair':Rr(-hw*0.8,-hd*0.75,hw*0.8,hd*0.55);Rr(-hw*0.85,hd*0.55,hw*0.85,hd,'SASH','ink');label=false;break;
+    case 'round':Cc(0,0,Math.min(w,dd)/2,'SASH','sash');if(w<600)label=false;break;
+    case 'hex':d.poly(Array.from({length:6},(_,i)=>{const a=i*Math.PI/3;return P(hw*Math.cos(a),hd*Math.sin(a))}),'SASH','sash',true,0.8);break;
+    case 'trap':d.poly([P(-hw,hd),P(hw,hd),P(hw*0.5,-hd),P(-hw*0.5,-hd)],'SASH','sash',true,0.8);break;
+    case 'board':Rr(-hw,-35,hw,35,'FRAME','white',1.4);Ln(-hw,-hd,-hw,hd,'GRID');Ln(hw,-hd,hw,hd,'GRID');break;
+    case 'pod':Rr(-hw,-hd,hw,hd,'FRAME','glass',1.4);Rr(-hw+70,-hd+70,hw-70,hd-70,'GRID',null);break;
+    case 'steps':Rr(-hw,-hd,hw,hd);for(let i=1;i<3;i++)Ln(-hw,-hd+dd*i/3,hw,-hd+dd*i/3,'GRID');break;
+    case 'screen':Rr(-hw,-hd,hw,hd,'TEXT','ink');break;
+    case 'box':Rr(-hw,-hd,hw,hd,'SASH','white');Ln(-hw,-hd,hw,hd,'GRID');Ln(hw,-hd,-hw,hd,'GRID');break;
+    case 'cab':Rr(-hw,-hd,hw,hd,'SASH','white');Ln(-hw,hd*0.6,hw,hd*0.6,'GRID');break;
+    case 'sofa':Rr(-hw,-hd,hw,hd);Rr(-hw,-hd,hw,-hd+dd*0.25);Rr(-hw,-hd,-hw+w*0.08,hd);Rr(hw-w*0.08,-hd,hw,hd);break;
+    case 'bed':{Rr(-hw,-hd,hw,hd,'SASH','white');Rr(-hw,-hd,hw,-hd+60,'TEXT','ink');const n=w>1300?2:1,pw=(w-200-(n-1)*100)/n;
+      for(let i=0;i<n;i++)Rr(-hw+100+i*(pw+100),-hd+120,-hw+100+i*(pw+100)+pw,-hd+420,'GRID','sash');Ln(-hw,-hd+dd*0.35,hw,-hd+dd*0.35,'GRID');break}
+    case 'counter':Rr(-hw,-hd,hw,hd);Ln(-hw,hd-40,hw,hd-40,'GRID');break;
+    case 'island':Rr(-hw,-hd,hw,hd,'SASH','hatch');break;
+    case 'sink':Rr(-hw*0.9,-hd*0.8,hw*0.9,hd*0.8,'SASH','white');Rr(-hw*0.8,-hd*0.6,-hw*0.05,hd*0.6,'GRID','glass');Rr(hw*0.05,-hd*0.6,hw*0.8,hd*0.6,'GRID','glass');label=false;break;
+    case 'hood':Rr(-hw,-hd,hw,hd,'HIDDEN',null);label=false;break;
+    case 'hob':{Rr(-hw,-hd,hw,hd,'SASH','white');const n=w>750?3:2;for(let i=0;i<n;i++)Cc(-hw+w*(i+0.5)/n,0,Math.min(w/n,dd)*0.32,'GRID');label=false;break}
+    case 'fridge':Rr(-hw,-hd,hw,hd,'SASH','white');if(w>800)Ln(0,-hd,0,hd,'GRID');break;
+    case 'wc':Rr(-hw,-hd,hw,-hd+dd*0.28,'SASH','white');El(0,-hd+dd*0.28+dd*0.36,hw*0.9,dd*0.36,'SASH','white');label=false;break;
+    case 'basin':{Rr(-hw,-hd,hw,hd,'SASH','white');const n=w>1200?2:1;for(let i=0;i<n;i++)El(-hw+w*(i+0.5)/n,hd*0.1,Math.min(hw/n*0.7,250),hd*0.5,'GRID','glass');label=false;break}
+    case 'shower':Rr(-hw,-hd,hw,hd,'GLASS','glass');Ln(-hw,-hd,hw,hd,'GRID',0.5);Ln(hw,-hd,-hw,hd,'GRID',0.5);Cc(0,0,40,'GRID','white');break;
+    case 'tub':Rr(-hw,-hd,hw,hd,'SASH','white');Rr(-hw+80,-hd+80,hw-80,hd-80,'GLASS','glass');Cc(hw-200,0,35,'GRID','white');break;
+    case 'glass':Rr(-hw,-Math.max(hd,12),hw,Math.max(hd,12),'GLASS','glass',1.6);label=false;break;
+    case 'glassS':Rr(-hw,-hd,hw*0.1,0,'GLASS','glass',1.2);Rr(-hw*0.1,0,hw,hd,'GLASS','glass',1.2);label=false;break;
+    case 'fan':Rr(-hw,-hd,hw,hd,'GRID','white');Cc(0,0,hw*0.7,'GRID');Ln(-hw,-hd,hw,hd,'GRID');Ln(hw,-hd,-hw,hd,'GRID');label=false;break;
+    case 'outlet':{const q=P(0,0),rr=sym;d.circle(q[0],q[1],rr,c.wet?'GUTTER':c.v===220?'OBS':'DIM','white');Ln(-rr*0.45,-rr*0.3,-rr*0.45,rr*0.3,c.v===220?'OBS':'DIM',1.2);Ln(rr*0.45,-rr*0.3,rr*0.45,rr*0.3,c.v===220?'OBS':'DIM',1.2);
+      if(c.v===220)d.text(q[0],q[1]-rr*1.3,'220',fs*0.55,'OBS');label=false;break}
+    case 'data':{const q=P(0,0);d.poly([[q[0],q[1]-sym],[q[0]+sym,q[1]+sym*0.7],[q[0]-sym,q[1]+sym*0.7]],'DIM','white',true,1);label=false;break}
+    case 'ap':Cc(0,0,sym,'DIM','white');arc(0,0,sym*1.8,-150,-30);label=false;break;
+    case 'cam':Rr(-sym,-sym*0.6,sym,sym*0.6,'DIM','white');d.poly([P(sym,-sym*0.4),P(sym*2,-sym),P(sym*2,sym),P(sym,sym*0.4)],'DIM',null,true,0.8);label=false;break;
+    case 'ac':Rr(-hw,-hd,hw,hd,'DIM','white');for(let i=1;i<4;i++)Ln(-hw*0.85,-hd+dd*i/4,hw*0.85,-hd+dd*i/4,'DIM',0.5);label=false;{const q=P(0,hd+sym*1.6);d.text(q[0],q[1],'冷氣',fs*0.6,'DIM')}break;
+    case 'panel':Rr(-hw,-hd,hw,hd,'OBS','white',1.2);Ln(-hw,-hd,hw,hd,'OBS');label=false;{const q=P(0,hd+sym*1.8);d.text(q[0],q[1],'配電箱',fs*0.6,'OBS')}break;
+    case 'weak':Rr(-hw,-hd,hw,hd,'DIM','white',1.2);Ln(-hw,-hd,hw,hd,'DIM');Ln(hw,-hd,-hw,hd,'DIM');label=false;{const q=P(0,hd+sym*1.8);d.text(q[0],q[1],'弱電箱',fs*0.6,'DIM')}break;
+    /* 天花板燈具用虛線：看得出在上方、不佔地面 */
+    case 'light':Rr(-hw,-hd,hw,hd,'HIDDEN',null,0.6);Ln(-hw,-hd,hw,hd,'HIDDEN',0.4);Ln(hw,-hd,-hw,hd,'HIDDEN',0.4);label=false;break;
+    case 'down':Cc(0,0,Math.max(hw,sym*0.8),'GRID');Ln(-hw,0,hw,0,'GRID',0.5);Ln(0,-hw,0,hw,'GRID',0.5);label=false;break;
+    case 'door':Rr(-hw,0,hw,t,'WALL','white',0.3);Ln(-hw,0,-hw,-w,'SASH',1.4);arc(-hw,0,w,-90,0);label=false;break;
+    case 'door2':Rr(-hw,0,hw,t,'WALL','white',0.3);Ln(-hw,0,-hw,-hw,'SASH',1.4);arc(-hw,0,hw,-90,0);Ln(hw,0,hw,-hw,'SASH',1.4);arc(hw,0,hw,180,270);label=false;break;
+    case 'sdoor':Rr(-hw,0,hw,t,'WALL','white',0.3);Rr(-hw,t*0.15,hw*0.08,t*0.45,'SASH','sash');Rr(-hw*0.08,t*0.55,hw,t*0.85,'SASH','sash');label=false;break;
+    case 'win':Rr(-hw,0,hw,t,'WALL','white',0.6);Ln(-hw,t*0.35,hw,t*0.35,'GLASS',1);Ln(-hw,t*0.65,hw,t*0.65,'GLASS',1);label=false;break;
+    default:Rr(-hw,-hd,hw,hd)}
+  if(label){const n=shortName(o.label||c.n),sz=Math.min(fs,w*0.85/Math.max(2,n.length),dd*0.42);
+    if(sz>fs*0.38)d.text(o.x,o.y+sz*0.35,n,sz,'NOTE')}
+  if(hit){const m=Math.max(sym*2.4,0),hx=Math.max(hw,m),hy=Math.max(hd,m),y0=s.startsWith('door')||s==='sdoor'||s==='win'?-Math.min(w,1000)*0.6:-hy,y1=s.startsWith('door')||s==='sdoor'||s==='win'?t:hy;
+    d.poly([P(-hx,y0),P(hx,y0),P(hx,y1),P(-hx,y1)],'HIT',null,true,1,'o:'+o.id)}
+}
+function bRoom(it,sel){
+  const p=it.p,W=Math.max(+p.RW||0,500),D=Math.max(+p.RD||0,500),t=Math.max(+p.wallT||0,50),k=Math.max(W,D),d=new Dw(k),fs=k*0.024,hit=sel!==undefined;
+  d.rect(-t,-t,W+2*t,D+2*t,'WALL','wall');d.rect(0,0,W,D,'FRAME','white',0.8);
+  const objs=[...(p.objs||[])].sort((a,b)=>(objCat(a).top?1:0)-(objCat(b).top?1:0));
+  for(const o of objs)drawObj(d,o,t,fs,k,false);
+  /* 感應區最後畫、小物件（插座等 top 層）疊在最上面，手指才點得到；只收 HIT 多邊形，不重畫圖形 */
+  if(hit){const only={k:d.k,line(){},rect(){},circle(){},text(){},arrow(){},poly(pts,L,f,c,sw,tag){if(L==='HIT')d.poly(pts,L,f,c,sw,tag)}};for(const o of objs)drawObj(only,o,t,fs,k,true)}
+  const so=sel&&(p.objs||[]).find(o=>o.id===sel);
+  if(so){const {w,d:dd}=objSize(so),m=Math.max(k*0.012,60),hw=Math.max(w/2,m)+m,hd=Math.max(dd/2,m)+m,P=(x,y)=>{const [a,b]=ROOM.rot(+so.r||0,x,y);return [so.x+a,so.y+b]};
+    d.poly([P(-hw,-hd),P(hw,-hd),P(hw,hd),P(-hw,hd)],'OBS',null,true,2.4);
+    d.dimH(0,so.x,-t-k*0.05,-t,fmtLen(so.x));d.dimV(0,so.y,-t-k*0.05,-t,fmtLen(so.y))}
+  d.dimH(0,W,D+t+k*0.07,D+t,fmtLen(W));d.dimV(0,D,W+t+k*0.07,W+t,fmtLen(D));
+  d.text(0,D+t+k*0.14,`${TYPES.room.n}　${(W*D/1e6).toFixed(1)} m²（${(W*D/1e6/3.3058).toFixed(1)} 坪）　物件 ${(p.objs||[]).length} 件`,fs*0.8,'DIM','start');
+  return d}
+function room3D(T,it,ctx){
+  const {g,alu,wallM,mats}=ctx,p=it.p,s=v=>(+v||0)/1000,W=s(p.RW)||1,D=s(p.RD)||1,H=s(p.RH)||2.8,t=s(p.wallT)||0.12;
+  const mk=c=>{const m=new T.MeshLambertMaterial({color:c});mats.push(m);return m};
+  const COL={'辦公桌':0xc8b89a,'座椅':0x46505a,'互動協作':0x7aa6c2,'應變指揮':0x5d6d7e,'會議視聽':0x2b2f33,'辦公設備':0xd5d8dc,'收納':0xb9a58a,'客餐廳臥室':0xa3b18a,
+    '廚房':0xe7e2d8,'廚房家電':0xcfd4d8,'浴室':0xf4f6f7,'電氣':0xeeeeee,'弱電':0x9fb3c8,'照明':0xfff3c4,'門窗開口':0x8e6e53};
+  const M={};const matOf=c=>M[c]||(M[c]=mk(COL[c]||0xbbbbbb));
+  const add=(geo,m,x,y,z,ry)=>{const me=new T.Mesh(geo,m);me.position.set(x,y,z);me.rotation.y=ry||0;g.add(me)};
+  add(new T.BoxGeometry(W+2*t,0.02,D+2*t),mk(0xe9e4da),W/2,-0.01,D/2);
+  add(new T.BoxGeometry(W+2*t,H,t),wallM,W/2,H/2,-t/2);add(new T.BoxGeometry(t,H,D),wallM,-t/2,H/2,D/2);
+  add(new T.BoxGeometry(t,0.12,D),wallM,W+t/2,0.06,D/2);add(new T.BoxGeometry(W+2*t,0.12,t),wallM,W/2,0.06,D+t/2);
+  for(const o of p.objs||[]){const {w,d:dd,c}=objSize(o),sh=c.s||'rect';if(['door','door2','sdoor','win','hood'].includes(sh))continue;
+    let h=s(c.h||800),y0=0;const ww=Math.max(s(w),0.03),dd3=Math.max(s(dd),0.03),ry=-(+o.r||0)*Math.PI/180;
+    if(c.light||sh==='fan'){h=0.03;y0=H-0.03}else if(sh==='ac'){y0=H-0.45}else if(['outlet','data'].includes(sh)){h=0.08;y0=sh==='outlet'&&c.h===0?0:0.3}
+    else if(['weak','panel'].includes(sh)){y0=1.2}else if(sh==='screen'&&dd<400&&h<2){y0=0.9}else if(['ap','cam'].includes(sh)){h=0.05;y0=H-0.06}
+    h=Math.max(h,0.02);const m=matOf(c.c);
+    const lp=(lx,ly)=>{const [a,b]=ROOM.rot(+o.r||0,lx,ly);return [s(o.x+a),s(o.y+b)]},B=(w3,h3,d3,lx,y,ly,mm)=>{const [x,z]=lp(lx,ly);add(new T.BoxGeometry(w3,h3,d3),mm||m,x,y,z,ry)};
+    /* 桌椅畫成「板＋背板」而不是實心方塊，3D 才看得出是家具 */
+    if(sh==='chair'){B(ww*0.8,0.08,dd3*0.7,0,0.45,-dd*0.1);B(ww*0.85,Math.max(h-0.45,0.1),0.06,0,0.45+Math.max(h-0.45,0.1)/2,dd*0.42);B(0.05,0.41,0.05,0,0.205,-dd*0.1)}
+    else if(sh==='desk'||sh==='desk2m'||sh==='rect'){B(ww,0.04,dd3,0,h-0.02,0);B(ww*0.92,h-0.04,0.03,0,(h-0.04)/2,-dd*0.42);
+      if(sh!=='rect'){B(0.03,h-0.04,dd3*0.9,-w*0.46,(h-0.04)/2,0);B(0.03,h-0.04,dd3*0.9,w*0.46,(h-0.04)/2,0)}
+      if(sh==='desk2m'){const sm=matOf('會議視聽');B(0.52,0.32,0.03,-w*0.17,h+0.25,-dd*0.3,sm);B(0.52,0.32,0.03,w*0.17,h+0.25,-dd*0.3,sm)}}
+    else if(sh==='round')add(new T.CylinderGeometry(Math.min(ww,dd3)/2,Math.min(ww,dd3)/2,h,20),m,s(o.x),y0+h/2,s(o.y));
+    else add(new T.BoxGeometry(ww,h,dd3),m,s(o.x),y0+h/2,s(o.y),ry)}
+  return {x:W/2,y:H*0.35,z:D/2,r:Math.max(W,D,H)*1.35}}
+function elecHTML(e){
+  if(!e.circuits.length)return '<p class="note" style="margin:0 0 6px">加入有用電的設備（冷氣、插座、廚房家電、螢幕…）後自動估算。</p>';
+  const rows=e.circuits.map(c=>`<tr><td><b>${esc(c.name)}</b><br><small style="color:var(--muted)">${esc(c.items.slice(0,6).join('、'))}${c.items.length>6?` 等 ${c.items.length} 項`:''}</small></td>
+    <td class="n">${c.v}V</td><td class="n">${Math.round(c.VA)} VA</td><td class="n">${c.I.toFixed(1)} A</td><td class="n"><b>${c.nfb}A</b></td><td class="n">${esc(c.wire)}</td><td>${c.elcb?'<b style="color:var(--danger)">要</b>':'—'}</td></tr>`).join('');
+  return `<div class="tbl"><table><thead><tr><th>迴路／設備</th><th>電壓</th><th>負載</th><th>電流</th><th>無熔絲開關</th><th>線徑</th><th>漏電斷路器</th></tr></thead><tbody>${rows}</tbody></table></div>
+  <div class="kv"><b>總負載</b><span>${(e.totVA/1000).toFixed(2)} kVA（需量後 ${(e.dmdVA/1000).toFixed(2)} kVA）</span>
+    <b>主幹電流</b><span>約 ${e.Imain.toFixed(0)} A（單相三線 110/220V 平衡估算）</span>
+    <b>主開關</b><span><b>${e.mainNfb||'—'} A</b>　主幹線 ${esc(e.mainWire)}</span>
+    <b>匯流排</b><span>額定 ${e.bus?e.bus+' A':'需另行設計'}（不小於主開關）</span>
+    <b>分路</b><span>${e.circuits.length} 路，配電箱建議至少 ${e.slots} 個分路位（預留約 20%）</span></div>
+  <ul class="note" style="padding-left:18px;margin:6px 0">${e.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul>
+  <details><summary class="note" style="cursor:pointer;margin:0">計算方式</summary><p class="note">電流 = 負載 VA ÷ 電壓；開關取「電流 × 1.25」以上最近的標準規格（15/20/30/40/50/60/75/100A…）；線徑取安培容量不小於開關的最小規格；
+  一般插座每迴路最多 8 個、約 1600VA；220V、1.5kW 以上或冰箱、微波爐等建議專用迴路；照明另成迴路。需量：一般插座＋照明前 3kVA 計 100%、其餘 50%，專用迴路 100%。
+  冷氣請填「耗電功率」而非冷房能力（2.8kW 冷房約耗電 0.9～1.0kW）。每個設備可在選取後改瓦數、電壓或指定迴路代號。</p></details>`}
+
 /* ---------- 3D ---------- */
 function canopy3D(T,it,ctx){
   const {g,box,alu,glassM,wallM,groundM,mats}=ctx,p=it.p,M=canopyModel(p),s=v=>v/1000;
@@ -852,6 +1324,7 @@ function newObs(type,p){const T=obsType(type),M=canopyModel(p);
 function upgradeItem(it){if(!it||!TYPES[it.type]||!it.p)return it;const t=TYPES[it.type],d=JSON.parse(JSON.stringify(t.d)),p={...it.p};
   if(it.type==='canopy'&&typeof p.posts==='number'){if(p.posts===0)p.postMode='掛壁式（無柱）';p.posts=[]}
   for(const k of t.f)if(p[k]===undefined){const f=FIELDS[k];p[k]=d[k]!==undefined?d[k]:f.t==='sel'?f.o[0]:f.t==='bool'?false:f.t==='int'?f.min:f.t==='list'?[]:0}
+  if(it.type==='room'){p.objs=(Array.isArray(p.objs)?p.objs:[]).filter(o=>o&&ROOM.byK[o.k]).map(o=>({...o,id:/^[A-Za-z0-9_-]{1,40}$/.test(String(o.id))?String(o.id):ROOM.oid(),x:+o.x||0,y:+o.y||0,r:(((+o.r||0)%360)+360)%360}))}
   if(it.type==='canopy'){for(const k of ['pts','wallE','posts','obs','marks'])if(p[k]===undefined)p[k]=d[k];
     if(!Array.isArray(p.posts))p.posts=[];if(!Array.isArray(p.obs))p.obs=[];if(!Array.isArray(p.wallE))p.wallE=[];if(!p.marks||typeof p.marks!=='object')p.marks={}}
   return {...it,p}}
@@ -875,6 +1348,7 @@ function build3D(T,it){
   let focus;
   const mats=[alu,glassM,wallM,groundM];
   if(it.type==='canopy'){focus=canopy3D(T,it,{g,box,alu,glassM,wallM,groundM,mats});
+  }else if(it.type==='room'){focus=room3D(T,it,{g,alu,wallM,mats});
   }else{
     const W=mm(p.W),H=mm(p.H),f=0.045,dp=0.07,oy=it.type==='door'?0:0.9,ext=0.5,wt=0.2,Y=v=>oy+v;
     box(ext,H+oy+ext,wt,-ext/2,(H+oy+ext)/2,-0.06,wallM);box(ext,H+oy+ext,wt,W+ext/2,(H+oy+ext)/2,-0.06,wallM);
@@ -892,8 +1366,9 @@ function build3D(T,it){
     else if(it.type==='door'){const t=Math.min(mm(p.transom),H*0.6);let dy=f,dh=ih;
       if(t>0){pane(f,H-t,iw,t-f,0);box(iw,f,dp,f+iw/2,Y(H-t),0,alu);dh=ih-t}
       const leaf=(x,w)=>{frame(x,dy,w,dh,f*0.9,0.01);pane(x+f,dy+dh*0.38,w-2*f,dh*0.58,0.01);box(w-2*f,dh*0.36,0.02,x+w/2,Y(dy+f+dh*0.18),0.01,alu)};
-      if(p.style==='雙開'){leaf(f,iw/2);leaf(f+iw/2,iw/2)}else if(p.style==='橫拉門'){frame(f,dy,iw/2,dh,f*0.8,0.02);pane(f*1.8,dy+f*0.8,iw/2-f*1.6,dh-f*1.6,0.02);frame(f+iw/2,dy,iw/2,dh,f*0.8,-0.02);pane(f*1.8+iw/2,dy+f*0.8,iw/2-f*1.6,dh-f*1.6,-0.02)}
+      if(p.style==='雙開'||p.style==='子母門'){leaf(f,iw/2);leaf(f+iw/2,iw/2)}else if(['橫拉門','雙橫拉門','自動感應門','穀倉門','折疊門'].includes(p.style)){frame(f,dy,iw/2,dh,f*0.8,0.02);pane(f*1.8,dy+f*0.8,iw/2-f*1.6,dh-f*1.6,0.02);frame(f+iw/2,dy,iw/2,dh,f*0.8,-0.02);pane(f*1.8+iw/2,dy+f*0.8,iw/2-f*1.6,dh-f*1.6,-0.02)}
       else leaf(f,iw)}
+    else if(it.type==='shaped'){pane(f,f,iw,ih,0);box(iw,f*0.6,dp,f+iw/2,Y(f+ih/2),0,alu)}
     focus={x:W/2,y:oy+H/2,z:0,r:Math.max(W,H)*2.2};
   }
   return {g,focus,mats};
@@ -935,7 +1410,7 @@ const aiSel=new Set();
 
 function go(name,pid,iid){dispose3D();wake(name==='project'||name==='item');if(aiCtl){aiCtl.abort();aiCtl=null}
   if(name==='list')photoCache.clear();if(name!=='item')aiSel.clear();
-  view={name,pid:pid||null,iid:iid||null,tab:name==='item'?'plan':view.tab,tool:''};render();scrollTo(0,0)}
+  view={name,pid:pid||null,iid:iid||null,tab:name==='item'?'plan':view.tab,tool:'',sel:null,zoom:false};render();scrollTo(0,0)}
 function render(){
   if(view.name==='project'&&cur())return renderProject(cur());
   if(view.name==='item'&&curItem())return renderItem(cur(),curItem());
@@ -989,7 +1464,8 @@ function renderProject(p){
     <h2>項目</h2>
     <div class="panel">${items}</div>
     <div class="chips">${Object.entries(TYPES).map(([k,v])=>`<button class="chip" data-act="addItem" data-t="${k}">＋ ${v.n}</button>`).join('')}</div>
-    <div class="tot"><span><b>${t.cai.toFixed(1)}</b>才（門窗）</span><span><b>${t.m2.toFixed(2)}</b>m²（採光罩）</span></div>
+    <div class="tot"><span><b>${t.cai.toFixed(1)}</b>才（門窗）</span><span><b>${t.m2.toFixed(2)}</b>m²（採光罩）</span>${t.rm2?`<span><b>${t.rm2.toFixed(1)}</b>m²（室內）</span>`:''}</div>
+    <div class="two" style="margin-top:10px"><select id="projTpl" aria-label="整案範本"><option value="">整案範本（一次加入多項）…</option>${ROOM.PROJ.map(t=>`<option value="${t.id}">${esc(t.n)}</option>`).join('')}</select><button class="b" data-act="projTpl">加入範本</button></div>
     ${AI?`<h2>AI 快速輸入</h2>
     <div class="panel"><div class="pad stack">
       <textarea id="aiQuick" placeholder="用說的或打字，例如：客廳橫拉窗寬180高120兩扇氣密窗白色；主臥固定窗90乘60；頂樓採光罩長5米深2米後高3米前高2米6"></textarea>
@@ -1027,26 +1503,28 @@ function fieldHTML(k,v,lo){const f=FIELDS[k],ll=lo||f.l;
   return `<label class="fld">${lab}<select data-f="${k}">${f.o.map(o=>`<option value="${esc(o)}" ${String(o)===String(v)?'selected':''}>${esc(o)}</option>`).join('')}</select></label>`;
 }
 function formFields(it){const p=it.p,out=[];
-  for(const k of TYPES[it.type].f){if(k==='hinge'&&p.style!=='單開')continue;
+  for(const k of TYPES[it.type].f){if(k==='hinge'&&!HINGED.has(p.style))continue;
     if(p.tri&&(k==='W'||k==='H')){for(const s of ['1','2','3'])out.push(fieldHTML(k+s,p[k+s]));continue}
     out.push(fieldHTML(k,p[k]))}
   return out.join('');
 }
 function metricHTML(it){const m=metrics(it),p=it.p;
+  if(m.room){const e=ROOM.elec(p.objs),q=hasPrices()?itemQuote(it):null;return `<span><b>${m.m2.toFixed(1)}</b>m²</span><span>${m.ping.toFixed(1)} 坪</span><span>物件 ${m.n} 件</span><span>估算負載 ${(e.totVA/1000).toFixed(1)} kVA・主開關 ${e.circuits.length?e.mainNfb+'A':'—'}</span>${q&&q.price?`<span>報價 ${money(q.amt)}</span>`:''}`+warnings(it).map(w=>`<span class="warn">${esc(w)}</span>`).join('')}
   const main=m.canopy?`<span><b>${m.m2.toFixed(2)}</b>m²</span><span>${m.ping.toFixed(2)} 坪</span><span>板材 ${m.cells} 片（整片 ${m.full}、異形 ${m.cut}）</span><span>斜長 ${fmtLen(m.sl)}</span><span>斜度 ${m.ang.toFixed(1)}°</span>`
     :`<span><b>${m.cai.toFixed(1)}</b>才</span><span>單${qtyUnit(it)} ${m.one.toFixed(1)} 才 × ${it.qty}</span>${p.tri?`<span class="info">下料尺寸 ${fmtLen(p.W)} × ${fmtLen(p.H)} ${unit}（三點取最小）</span>`:''}`;
   const q=hasPrices()?itemQuote(it):null;
   return main+(q&&q.price?`<span>報價 ${money(q.amt)}</span>`:'')+warnings(it).map(w=>`<span class="warn">${esc(w)}</span>`).join('');
 }
 function renderItem(p,it){
-  const idx=p.items.indexOf(it),t=TYPES[it.type],is3d=view.tab==='3d',isC=it.type==='canopy',tool=view.tool||'';
+  const idx=p.items.indexOf(it),t=TYPES[it.type],is3d=view.tab==='3d',isC=it.type==='canopy',isR=it.type==='room',tool=view.tool||'';
   const aiPhotos=AI&&AIimg&&p.photos.length?`<p class="note" style="margin:0">點選要給 AI 看的現場照片（最多 ${Math.min(3,AIimg.maxCount)} 張）</p>
       <div class="photos">${p.photos.map(id=>`<button class="ph${aiSel.has(id)?' sel':''}" data-act="aiPick" data-id="${id}" aria-pressed="${aiSel.has(id)}"><img data-pid="${id}" alt=""></button>`).join('')}</div>`:'';
   app.innerHTML=bar(`<button class="back" data-act="toProject">‹ ${esc(p.name||'案場')}</button><div class="title">#${idx+1} ${t.n}</div>`)
   +`<main>
     <div class="tabs" role="tablist"><button class="${is3d?'':'on'}" data-act="tab" data-t="plan" role="tab" aria-selected="${!is3d}">平面圖</button><button class="${is3d?'on':''}" data-act="tab" data-t="3d" role="tab" aria-selected="${is3d}">3D</button></div>
     ${is3d?`<div class="v3" id="v3"></div><div class="views"><button data-act="cam" data-v="iso">立體</button><button data-act="cam" data-v="front">正面</button><button data-act="cam" data-v="side">側面</button><button data-act="cam" data-v="top">俯視</button></div><p class="note">單指旋轉，雙指縮放。</p>`
-      :`${isC?`<div class="views" style="margin:0 0 8px;align-items:center"><span style="font-size:14px;color:var(--muted);font-weight:600">點格子：</span>${[['','檢視'],['void','挖空'],['hatch','維修孔'],['clear','清除']].map(([v,l])=>`<button class="${tool===v?'on':''}" data-act="tool" data-v="${v}">${l}</button>`).join('')}</div>`:''}<div class="paper" id="preview">${drawItem(it)}</div>${isC&&tool?'<p class="note">在俯視圖點格子即可標記，完成後按「檢視」。</p>':''}`}
+      :`${isR?`<div class="views" style="margin:0 0 8px;align-items:center">${[['','檢視／點選'],['move','拖曳移動']].map(([v,l])=>`<button class="${tool===v?'on':''}" data-act="tool" data-v="${v}">${l}</button>`).join('')}<button class="${view.zoom?'on':''}" data-act="roZoom">${view.zoom?'縮小':'放大'}</button></div>`:''}${isC?`<div class="views" style="margin:0 0 8px;align-items:center"><span style="font-size:14px;color:var(--muted);font-weight:600">點格子：</span>${[['','檢視'],['void','挖空'],['hatch','維修孔'],['clear','清除']].map(([v,l])=>`<button class="${tool===v?'on':''}" data-act="tool" data-v="${v}">${l}</button>`).join('')}</div>`:''}<div class="paper${isR&&tool==='move'?' drag':''}${isR&&view.zoom?' zoom':''}" id="preview">${drawItem(it)}</div>${isC&&tool?'<p class="note">在俯視圖點格子即可標記，完成後按「檢視」。</p>':''}${isR?`<p class="note" style="margin:6px 2px 0">${tool==='move'?'按住物件拖曳，會自動對齊 1 公分；拖空白處可捲動畫面。':'點物件可選取並微調；要用手指拖曳請切換「拖曳移動」。'}</p>`:''}`}
+    ${isR&&!is3d?roomSelHTML(it):''}
     <div class="metric" id="metric">${metricHTML(it)}</div>
     <h2>${isC?'基本資料':`尺寸與規格（${unit}）`}</h2>
     <div class="panel form">
@@ -1055,7 +1533,7 @@ function renderItem(p,it){
       ${isC?'':formFields(it)}
       <label class="fld full"><span>備註</span><textarea data-if="note" placeholder="例：外推、要做防水、舊窗框保留">${esc(it.note)}</textarea></label>
     </div>
-    ${isC?canopyForm(it):''}
+    ${isC?canopyForm(it):''}${isR?roomSections(it):''}
     <datalist id="locs">${LOCS.map(l=>`<option value="${l}">`).join('')}</datalist>
     <h2>AI 助手</h2>
     <div class="panel"><div class="pad stack">
@@ -1071,15 +1549,90 @@ function renderItem(p,it){
     </div>
   </main>`;
   if(is3d)mount3D($('#v3'),it);
+  if(isR&&!is3d)bindDrag();
   if(aiPhotos)loadThumbs(p);
 }
 let r3T=null;
 function refreshItem(){const it=curItem();if(!it)return;
   const pv=$('#preview');if(pv)pv.innerHTML=drawItem(it);
   if($('#v3')){clearTimeout(r3T);r3T=setTimeout(()=>{const box=$('#v3');if(box)mount3D(box,curItem())},500)}
-  $('#metric').innerHTML=metricHTML(it)}
+  $('#metric').innerHTML=metricHTML(it);
+  if(it.type==='room'){const e=$('#elec');if(e)e.innerHTML=elecHTML(ROOM.elec(it.p.objs));const l=$('#olist');if(l)l.innerHTML=objListHTML(it)}}
 async function loadThumbs(p){for(const id of p.photos){const els=app.querySelectorAll(`img[data-pid="${id}"]`);if(!els.length)continue;
   let d=photoCache.get(id);if(!d){d=await store.get('photo:'+id);if(d)cachePhoto(id,d)}if(d)els.forEach(el=>el.src=d)}}
+
+
+/* ---------- 室內平面圖：編輯介面 ---------- */
+let catQ='',catC='',ideaDraft='',lastDrag=0;
+/* 記住摺疊區塊的開合（重畫畫面時不要自己收起來）；沒記錄時用預設值 */
+const secOpen={};const isOpen=(k,def)=>secOpen[k]!==undefined?secOpen[k]:def;
+document.addEventListener('toggle',e=>{const d=e.target;if(d&&d.dataset&&d.dataset.sec)secOpen[d.dataset.sec]=d.open},true);
+function catalogHTML(){const list=ROOM.search(catQ,catC);if(!list.length)return '<p class="note" style="margin:0">找不到，換個關鍵字試試（例：冷氣、中島、插座、會議）。</p>';
+  return list.slice(0,80).map(c=>`<button class="citem" data-act="roAdd" data-k="${c.k}"><span>${esc(c.n)}</span><small>${esc(c.c)}　${fmtLen(c.w)}×${fmtLen(c.d)} ${unit}</small><span class="w">${c.watt?(c.watt>=1000?(c.watt/1000).toFixed(1)+'kW':c.watt+'W')+(c.v===220?'・220V':''):'＋'}</span></button>`).join('')+(list.length>80?`<p class="note">還有 ${list.length-80} 項，請輸入關鍵字縮小範圍。</p>`:'')}
+function objListHTML(it){const objs=it.p.objs||[];if(!objs.length)return '<p class="note" style="margin:0">尚無物件。</p>';
+  return objs.map(o=>{const c=objCat(o),{w,d}=objSize(o);return `<button class="citem" data-act="roSel" data-id="${esc(o.id)}"${o.id===view.sel?' style="border-color:var(--dim)"':''}><span>${esc(o.label||c.n)}</span><small>X ${fmtLen(o.x)}・Y ${fmtLen(o.y)}・${fmtLen(w)}×${fmtLen(d)}${o.r?`・轉 ${o.r}°`:''}</small><span class="w">${esc(c.c)}</span></button>`}).join('')}
+function roomSelHTML(it){const o=(it.p.objs||[]).find(x=>x.id===view.sel);if(!o)return '';const c=objCat(o),{w,d}=objSize(o),el=c.watt!=null||c.s==='outlet';
+  const L=(k,l,v)=>`<label class="fld"><span>${l}</span><div class="suf"><input inputmode="decimal" data-ro="${k}" value="${fmtLen(v)}" autocomplete="off"><i>${unit}</i></div></label>`;
+  return `<div class="panel pad selp"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><b>${esc(o.label||c.n)}</b><button class="barbtn" style="border-color:var(--line);color:var(--ink)" data-act="roDesel">完成</button></div>
+    <div class="form" style="padding:10px 0 0">${L('x','X（中心，離左牆）',o.x)}${L('y','Y（中心，離上牆）',o.y)}${L('w','寬',w)}${L('d','深',d)}
+    <label class="fld full"><span>名稱（可自訂）</span><input data-ro="label" value="${esc(o.label||'')}" placeholder="${esc(c.n)}" autocomplete="off"></label>
+    ${el?`<label class="fld"><span>用電（W）<em>空白＝${c.watt||0}</em></span><div class="suf"><input inputmode="numeric" data-ro="watt" value="${o.watt!=null&&o.watt!==''?esc(o.watt):''}" autocomplete="off"><i>W</i></div></label>
+    <label class="fld"><span>電壓</span><select data-ro="v">${[110,220].map(v=>`<option value="${v}" ${(+(o.v||c.v||110))===v?'selected':''}>${v}V</option>`).join('')}</select></label>
+    <label class="fld full"><span>指定迴路<em>空白＝自動分配；同代號會合併成同一迴路</em></span><input data-ro="circ" value="${esc(o.circ||'')}" placeholder="例：A、廚房1" autocomplete="off"></label>`:''}</div>
+    <div class="nud" style="margin-top:10px"><button data-act="roRot" data-d="-90" aria-label="逆時針轉 90 度">⟲</button><button data-act="roNudge" data-dx="-100" data-dy="0" aria-label="左移 10 公分">←</button><button data-act="roNudge" data-dx="0" data-dy="-100" aria-label="上移 10 公分">↑</button><button data-act="roNudge" data-dx="0" data-dy="100" aria-label="下移 10 公分">↓</button><button data-act="roNudge" data-dx="100" data-dy="0" aria-label="右移 10 公分">→</button><button data-act="roRot" data-d="90" aria-label="順時針轉 90 度">⟳</button></div>
+    <div class="two" style="margin-top:10px"><button class="b" data-act="roDup">複製</button><button class="b danger" data-act="roDel">刪除</button></div></div>`}
+function roomSections(it){const objs=it.p.objs||[],groups=[...new Set(ROOM.TPL.map(t=>t.cat))];
+  return `<h2>室內規劃</h2>
+  <details class="panel" data-sec="tpl"${isOpen('tpl',objs.length<=3)?' open':''}><summary>⚡ 範本與 AI 構想</summary><div class="pad stack" style="padding-top:0">
+    <textarea id="idea" placeholder="用一句話描述，例如：12人緊急應變中心 長10米寬8米；8人會議室 5x4米；中島廚房 4.5x4.2米">${esc(ideaDraft)}</textarea>
+    <button class="b primary" data-act="idea" id="ideaBtn">依構想快速產生</button>
+    <p class="note" style="margin:0">${AI?'會用 AI 排版（先以本機範本為底稿），':'會依關鍵字、尺寸、人數套用範本，'}產生後可點選或拖曳微調。會取代目前的配置。</p>
+    <div class="two"><select id="tplSel" aria-label="選擇範本">${groups.map(g=>`<optgroup label="${esc(g)}">${ROOM.TPL.filter(t=>t.cat===g).map(t=>`<option value="${t.id}" ${t.id===it.p.tpl?'selected':''}>${esc(t.n)}</option>`).join('')}</optgroup>`).join('')}</select><button class="b" data-act="tplApply">套用範本</button></div>
+  </div></details>
+  <details class="panel" data-sec="cat"${isOpen('cat',true)?' open':''}><summary>＋ 加入家具與設備（${ROOM.C.length} 種）</summary><div class="pad stack" style="padding-top:0">
+    <div class="two"><input id="catQ" type="search" value="${esc(catQ)}" placeholder="搜尋：冷氣、中島、插座…" autocomplete="off"><select id="catC" aria-label="類別"><option value="">全部類別</option>${ROOM.CATS.map(c=>`<option ${c===catC?'selected':''}>${c}</option>`).join('')}</select></div>
+    <div class="clist" id="clist">${catalogHTML()}</div></div></details>
+  <details class="panel" data-sec="list"${isOpen('list',false)?' open':''}><summary>物件清單（${objs.length}）</summary><div class="pad" style="padding-top:0"><div class="clist" id="olist">${objListHTML(it)}</div></div></details>
+  <details class="panel" data-sec="elec"${isOpen('elec',true)?' open':''}><summary>⚡ 用電估算：開關、線徑、匯流排</summary><div class="pad" style="padding-top:0" id="elec">${elecHTML(ROOM.elec(objs))}</div></details>`}
+function bindDrag(){const pv=$('#preview');if(!pv||view.tool!=='move')return;let dr=null,raf=0;
+  const pt=e=>{const sv=pv.querySelector('svg'),m=sv&&sv.getScreenCTM();if(!m)return null;const q=sv.createSVGPoint();q.x=e.clientX;q.y=e.clientY;const r=q.matrixTransform(m.inverse());return [r.x,r.y]};
+  pv.addEventListener('pointerdown',e=>{const it=curItem();if(!it)return;const el=e.target.closest&&e.target.closest('[data-obj]'),o=el&&it.p.objs.find(x=>x.id===el.getAttribute('data-obj'));
+    if(o){const s=pt(e);if(!s)return;dr={o,sx:s[0],sy:s[1],ox:o.x,oy:o.y,moved:false,id:e.pointerId}}
+    else dr={pan:true,sx:e.clientX,sy:e.clientY,sl:pv.scrollLeft,wy:scrollY,id:e.pointerId,moved:false};
+    try{pv.setPointerCapture(e.pointerId)}catch(err){}e.preventDefault()});
+  pv.addEventListener('pointermove',e=>{if(!dr||e.pointerId!==dr.id)return;
+    if(dr.pan){const dx=e.clientX-dr.sx,dy=e.clientY-dr.sy;pv.scrollLeft=dr.sl-dx;scrollTo(scrollX,dr.wy-dy);return}
+    const s=pt(e);if(!s)return;const dx=s[0]-dr.sx,dy=s[1]-dr.sy;if(!dr.moved&&Math.hypot(dx,dy)<25)return;dr.moved=true;
+    const it=curItem(),W=+it.p.RW||0,D=+it.p.RD||0;
+    dr.o.x=clamp(Math.round((dr.ox+dx)/10)*10,0,W);dr.o.y=clamp(Math.round((dr.oy+dy)/10)*10,0,D);view.sel=dr.o.id;
+    /* 拖曳中只用 requestAnimationFrame 重畫圖，不重建整頁，手機才不會卡 */
+    if(!raf)raf=requestAnimationFrame(()=>{raf=0;const c=curItem();if(c)pv.innerHTML=drawItem(c)})});
+  const end=e=>{if(!dr||e.pointerId!==dr.id)return;const m=dr.moved&&!dr.pan;dr=null;if(m){lastDrag=Date.now();save();render()}};
+  pv.addEventListener('pointerup',end);pv.addEventListener('pointercancel',end)}
+function applyRoom(it,r){it.p.RW=r.W;it.p.RD=r.D;it.p.objs=r.objs;it.p.tpl=r.tpl||it.p.tpl;view.sel=null;save();render()}
+async function roomIdea(p,it){const txt=($('#idea')&&$('#idea').value||'').trim();if(!txt)return toast('先輸入構想，例如：8人會議室 5x4米');ideaDraft=txt;
+  if((it.p.objs||[]).length>3&&!await ask('依構想重新產生會取代目前的配置，確定嗎？','取代'))return;
+  const local=ROOM.fromIdea(txt);let r=local,via='本機範本';
+  if(AI){const btn=$('#ideaBtn');if(btn){btn.disabled=true;btn.textContent='AI 排版中…'}
+    try{const cat=ROOM.C.map(c=>`${c.k}=${c.n}(${c.w}x${c.d}mm)`).join('; ');
+      const prompt=`你是台灣室內設計師。依使用者構想，排出一間房間的平面配置。
+座標單位 mm，原點在室內左上角，X 往右（寬 W）、Y 往下（深 D）。每件物件的 x,y 是「中心點」，r 是旋轉角度（0/90/180/270）。
+方向慣例：r=0 的桌子，使用者坐在桌子下方（+Y 側）；椅子 r=0 面向上方（-Y）；靠上牆的櫃子、沙發、馬桶、廚具用 r=0；門與窗放在牆線上：下牆 y=D r=0、上牆 y=0 r=180、左牆 x=0 r=90、右牆 x=W r=270。
+規則：物件不可重疊、主要走道至少 900mm、所有物件中心在房間內；插座（out/outF/outW/out220）與弱電（weak、rj45）要跟著用電設備與座位配置；潮濕區用 outW。
+只能使用這些家具代號：${cat}
+本機範本初稿（可沿用後再調整）：${JSON.stringify({W:local.W,D:local.D,objs:local.objs.map(o=>({k:o.k,x:o.x,y:o.y,r:o.r,...(o.w?{w:o.w}:{}),...(o.d?{d:o.d}:{})}))})}
+使用者構想：${txt}
+只回覆 JSON：{"W":數字,"D":數字,"objs":[{"k":"代號","x":數字,"y":數字,"r":0,"w":可省略,"d":可省略}]}`;
+      const out=await AI.json(prompt,{});
+      const W=Math.round(+out.W),D=Math.round(+out.D);
+      if(W>=1200&&W<=30000&&D>=1200&&D<=30000&&Array.isArray(out.objs)){
+        const objs=out.objs.slice(0,300).filter(o=>o&&ROOM.byK[o.k]).map(o=>{const x={id:ROOM.oid(),k:o.k,x:clamp(Math.round(+o.x||0),0,W),y:clamp(Math.round(+o.y||0),0,D),r:((Math.round((+o.r||0)/90)*90)%360+360)%360};
+          if(+o.w>0&&+o.w<30000)x.w=Math.round(+o.w);if(+o.d>0&&+o.d<30000)x.d=Math.round(+o.d);return x});
+        if(objs.length){r={tpl:local.tpl,W,D,objs};via='AI'}}}
+    catch(err){toast(aiErr(err)+'，改用本機範本')}
+    finally{const b=$('#ideaBtn');if(b){b.disabled=false;b.textContent='依構想快速產生'}}}
+  if(!it.loc&&r.tpl!=='blank')it.loc=(ROOM.tplBy[r.tpl]||{}).n||'';
+  applyRoom(it,r);toast(`已依構想產生（${via}${local.matched?'':'，沒認出空間類型，先給空白房間'}），可點選或拖曳微調`)}
 
 /* ---------- 設定 ---------- */
 function renderSettings(){
@@ -1104,7 +1657,7 @@ function renderSettings(){
     <p class="note">CAD 圖檔固定以 mm 輸出，符合一般業者習慣。</p>
     <h2>報價單價</h2>
     <div class="panel">
-      ${Object.entries(TYPES).map(([k,v])=>`<div class="pricerow"><span>${v.n}<small style="color:var(--muted)">　每${k==='canopy'?'坪':'才'}</small></span><div class="suf"><input inputmode="numeric" data-sf="prices.${k}" data-num value="${+s.prices[k]||0}"><i>元</i></div></div>`).join('')}
+      ${Object.entries(TYPES).map(([k,v])=>`<div class="pricerow"><span>${v.n}<small style="color:var(--muted)">　每${k==='canopy'||k==='room'?'坪':'才'}</small></span><div class="suf"><input inputmode="numeric" data-sf="prices.${k}" data-num value="${+s.prices[k]||0}"><i>元</i></div></div>`).join('')}
       <div class="pricerow"><span>門窗最低計價才數<small style="color:var(--muted)">　未滿以此計</small></span><div class="suf"><input inputmode="decimal" data-sf="minCai" data-num value="${+s.minCai||0}"><i>才</i></div></div>
       <div class="pricerow"><span>報價加 5% 營業稅</span><label class="tog" style="border:0;background:transparent;padding:0;min-height:0;justify-self:end"><input type="checkbox" data-sf="tax" ${s.tax?'checked':''}></label></div>
     </div>
@@ -1140,6 +1693,9 @@ function onField(e){const t=e.target;
     if(t.id==='importIn'){importBackup(t.files&&t.files[0]);t.value='';return}
   }
   if(t.id==='q'){query=t.value;$('#plist').innerHTML=cardsHTML();return}
+  if(t.id==='catQ'||t.id==='catC'){if(t.id==='catQ')catQ=t.value;else catC=t.value;const l=$('#clist');if(l)l.innerHTML=catalogHTML();return}
+  if(t.id==='idea'){ideaDraft=t.value;return}
+  if(t.id==='tplSel'||t.id==='projTpl')return;
   if(t.dataset.sf){let v=t.type==='checkbox'?t.checked:t.value;if(t.dataset.num!==undefined){v=parseFloat(v);if(!Number.isFinite(v)||v<0)return}
     setPath(settings,t.dataset.sf,v);saveSettings();if(t.dataset.sf==='wake')wake(v);return}
   if(t.dataset.pf){const p=cur();if(!p)return;const k=t.dataset.pf;
@@ -1158,6 +1714,12 @@ function onField(e){const t=e.target;
     if(k==='type'){if(o.type===t.value)return;const T=obsType(t.value);o.type=T.n;o.mode=OBS_MODE[T.m];o.w=T.w;o.d=T.d||0;o.h=T.h||0;save();render();return}
     if(k==='mode'||k==='note'){o[k]=t.value;save();if(k==='mode')refreshItem();return}
     const v=parseLen(t.value);if(v==null)return;o[k]=v;save();refreshItem();return}
+  if(t.dataset.ro){const o=(p0.objs||[]).find(x=>x.id===view.sel);if(!o)return;const k=t.dataset.ro;
+    if(k==='label'||k==='circ'){o[k]=t.value.slice(0,30);if(!o[k])delete o[k]}
+    else if(k==='watt'){if(t.value.trim()===''){delete o.watt}else{const n=parseFloat(t.value);if(!Number.isFinite(n)||n<0)return;o.watt=Math.min(n,100000)}}
+    else if(k==='v')o.v=+t.value===220?220:110;
+    else{const v=parseLen(t.value);if(v==null)return;if((k==='w'||k==='d')&&!(v>0))return;o[k]=k==='x'?clamp(v,0,+p0.RW||0):k==='y'?clamp(v,0,+p0.RD||0):Math.min(v,30000)}
+    save();refreshItem();return}
   if(t.dataset.f){const k=t.dataset.f,f=FIELDS[k],p=it.p;let v;
     if(f.t==='list'){v=String(t.value).split(/[,，、\s]+/).map(parseLen).filter(x=>x!=null&&x>0);if(JSON.stringify(v)===JSON.stringify(p[k]))return;p[k]=v;save();refreshItem();return}
     if(f.t==='len'){v=parseLen(t.value);if(v==null||v<0)return}
@@ -1180,6 +1742,8 @@ app.addEventListener('input',onField);
 app.addEventListener('change',onField);
 
 app.addEventListener('click',async e=>{
+  const objEl=e.target.closest&&e.target.closest('[data-obj]');
+  if(objEl&&curItem()&&curItem().type==='room'){if(Date.now()-lastDrag<500)return;view.sel=objEl.getAttribute('data-obj');return render()}
   const cellEl=e.target.closest&&e.target.closest('[data-cell]');
   if(cellEl&&view.tool&&curItem()){const ci=curItem(),mk=ci.p.marks||(ci.p.marks={}),key=cellEl.getAttribute('data-cell');
     if(view.tool==='clear')delete mk[key];else mk[key]=mk[key]===view.tool?undefined:view.tool;if(mk[key]===undefined)delete mk[key];save();refreshItem();return}
@@ -1191,7 +1755,28 @@ app.addEventListener('click',async e=>{
     case 'newProject':{const np=normProject({id:uid(),name:'',date:today()});projects.unshift(np);save();return go('project',np.id)}
     case 'openProject':return go('project',b.dataset.id);
     case 'toProject':return go('project',view.pid);
-    case 'addItem':{const ni=newItem(b.dataset.t);p.items.push(ni);save();return go('item',p.id,ni.id)}
+    case 'addItem':{const ni=newItem(b.dataset.t);if(ni.type==='room'){const r=ROOM.make('blank');ni.p.RW=r.W;ni.p.RD=r.D;ni.p.objs=r.objs}p.items.push(ni);save();return go('item',p.id,ni.id)}
+    case 'projTpl':{const sel=$('#projTpl'),tp=ROOM.PROJ.find(x=>x.id===(sel&&sel.value));if(!tp)return toast('先選一個整案範本');
+      for(const [ty,loc,pp] of tp.items){const ni=newItem(ty);ni.loc=loc;
+        if(ty==='room'){const r=ROOM.make(pp.tpl);ni.p.RW=r.W;ni.p.RD=r.D;ni.p.objs=r.objs;ni.p.tpl=r.tpl}else Object.assign(ni.p,pp);p.items.push(ni)}
+      save();render();return toast(`已加入 ${tp.items.length} 個項目，請逐一確認尺寸`)}
+    case 'roZoom':view.zoom=!view.zoom;return render();
+    case 'roAdd':{const c=ROOM.byK[b.dataset.k];if(!c||!it)return;const W=+it.p.RW||0,D=+it.p.RD||0,so=it.p.objs.find(x=>x.id===view.sel);
+      const wall=['door','door2','sdoor','win'].includes(c.s),o={id:ROOM.oid(),k:c.k,x:Math.round(so?Math.min(W,so.x+300):W/2),y:Math.round(wall?D:so?Math.min(D,so.y+300):D/2),r:0};
+      if(c.top&&!wall&&['outlet','data','ac','panel','weak'].includes(c.s)&&!so)o.y=c.s==='ac'?Math.round(c.d/2):20;
+      it.p.objs.push(o);view.sel=o.id;save();render();scrollTo(0,0);return toast(`已加入「${shortName(c.n)}」，可拖曳或輸入位置`)}
+    case 'roSel':view.sel=b.dataset.id;render();return scrollTo(0,0);
+    case 'roDesel':view.sel=null;return render();
+    case 'roRot':case 'roNudge':case 'roDup':case 'roDel':{const o=it&&it.p.objs.find(x=>x.id===view.sel);if(!o)return;
+      if(a==='roRot')o.r=((+o.r||0)+ +b.dataset.d+360)%360;
+      else if(a==='roNudge'){o.x=clamp(o.x+ +b.dataset.dx,0,+it.p.RW||0);o.y=clamp(o.y+ +b.dataset.dy,0,+it.p.RD||0)}
+      else if(a==='roDup'){const c={...o,id:ROOM.oid(),x:Math.min(+it.p.RW||0,o.x+300),y:Math.min(+it.p.RD||0,o.y+300)};it.p.objs.push(c);view.sel=c.id}
+      else{it.p.objs=it.p.objs.filter(x=>x!==o);view.sel=null}
+      save();return render()}
+    case 'tplApply':{const id=$('#tplSel')&&$('#tplSel').value;if(!ROOM.tplBy[id])return;
+      if((it.p.objs||[]).length>3&&!await ask('套用範本會取代目前的配置，確定嗎？','取代'))return;
+      const tp=ROOM.tplBy[id],same=it.p.tpl===id,r=same?ROOM.make(id,it.p.RW,it.p.RD):ROOM.make(id);if(!it.loc&&id!=='blank')it.loc=tp.n;applyRoom(it,r);return toast(`已套用「${tp.n}」，可修改房間尺寸後重新套用`)}
+    case 'idea':return roomIdea(p,it);
     case 'openItem':return go('item',view.pid,b.dataset.id);
     case 'tab':if(view.tab===b.dataset.t)return;dispose3D();view.tab=b.dataset.t;return render();
     case 'cam':return V3&&V3.preset(b.dataset.v);
@@ -1285,13 +1870,15 @@ function sheet(x,p,title,n,N){
 function svgImg(svg){return loadImg('data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg))}
 function specRows(it){
   const rows=[['位置',it.loc||'—'],['類型',TYPES[it.type].n],['數量',`${it.qty} ${qtyUnit(it)}`]],p=it.p,isC=it.type==='canopy',vis=isC?canopyVisible(p):null,lb=isC?canopyLabels(p):{};
-  for(const k of TYPES[it.type].f){if(k==='hinge'&&p.style!=='單開')continue;if(isC&&!vis.has(k))continue;const f=FIELDS[k],v=p[k];
+  for(const k of TYPES[it.type].f){if(k==='hinge'&&!HINGED.has(p.style))continue;if(isC&&!vis.has(k))continue;const f=FIELDS[k],v=p[k];
     if(f.t==='list'){if(v&&v.length)rows.push([f.l,v.map(fmtLen).join(', ')+' '+unit]);continue}
     if(k==='heater'){if(v)rows.push(['燃氣熱水器','封閉範圍內有（須處理排氣）']);continue}
     if(isC&&lb[k]){rows.push([lb[k],`${fmtLen(v)} ${unit}`]);continue}
     if(k==='tri'){if(v)rows.push(['三點量測',`寬 ${fmtLen(p.W1)}/${fmtLen(p.W2)}/${fmtLen(p.W3)}　高 ${fmtLen(p.H1)}/${fmtLen(p.H2)}/${fmtLen(p.H3)}`]);continue}
     rows.push([f.l.replace(/（.*?）/,''),f.t==='len'?(k==='transom'&&!v?'無':`${fmtLen(v)} ${unit}`):f.t==='bool'?(v?'有':'無'):(k==='posts'&&!v?'0（掛壁式）':String(v))])}
   const m=metrics(it);
+  if(m.room){const e=ROOM.elec(p.objs);rows.push(['面積',`${m.one.toFixed(1)} m²（${(m.one/3.3058).toFixed(1)} 坪）`],['家具設備',`${m.n} 件`],
+    ['估算負載',`${(e.totVA/1000).toFixed(2)} kVA`],['主開關（估）',e.circuits.length?`${e.mainNfb}A・${e.mainWire}・匯流排 ${e.bus||'—'}A`:'—']);return rows}
   if(m.canopy)rows.push(['斜度 / 斜長',`${m.ang.toFixed(1)}° / ${fmtLen(m.sl)} ${unit}`],['面積',`${m.m2.toFixed(2)} m²（${m.ping.toFixed(2)} 坪）`],
     ['板材',`${m.cells} 片（整片 ${m.full}、異形 ${m.cut}）`],['障礙物',`${it.p.obs.length} 項，開孔 ${m.holes} 處`]);
   else rows.push(['才數',`${m.one.toFixed(1)} 才 / ${qtyUnit(it)}，合計 ${m.cai.toFixed(1)} 才`]);
@@ -1320,7 +1907,7 @@ function summaryPage(p,chunk,start,n,N,last){
   x.fillStyle=INK;x.font=CF(700,32);x.fillText('項目總表',80,110);
   const cols=[[0,'#',56],[56,'位置',220],[276,'類型',150],[426,`尺寸（${unit}）`,250],[676,'規格',250],[926,'才 / 面積',154]];
   let y=tableHead(x,134,cols);
-  chunk.forEach((it,i)=>{const pp=it.p,sp=it.type==='canopy'?pp.panel:`${pp.series||''} ${pp.glass||''}`.trim()||pp.color;
+  chunk.forEach((it,i)=>{const pp=it.p,sp=it.type==='room'?`${(pp.objs||[]).length} 件家具設備`:it.type==='canopy'?pp.panel:`${pp.series||''} ${pp.glass||''}`.trim()||pp.color;
     const cells=[String(start+i+1),it.loc||'—',`${TYPES[it.type].n}×${it.qty}`,sizeText(it).replace(/ /g,''),sp,amountText(it)];
     x.fillStyle=INK;x.font=CF(500,21);cols.forEach(([cx,,w],j)=>x.fillText(fit(x,cells[j],w-18),80+cx+10,y+33));
     y+=50;x.fillStyle='#E3E7EB';x.fillRect(80,y-1,1080,1)});
@@ -1361,6 +1948,22 @@ function bomPage(p,it,n,N){
   const w=warnings(it);if(w.length&&y<TB-60){y+=10;x.fillStyle='#B42318';x.font=CF(600,20);for(const t of w){if(y>TB-24)break;x.fillText(fit(x,'⚠ '+t,1080),80,y);y+=30}}
   return c;
 }
+function roomPage(p,it,n,N){
+  const [c,x]=newPage(),idx=p.items.indexOf(it),e=ROOM.elec(it.p.objs);sheet(x,p,`${it.loc?it.loc+' ':''}設備與用電`,n,N);
+  x.fillStyle=INK;x.font=CF(700,30);x.fillText(fit(x,`#${idx+1}　${it.loc||''}　家具設備清單與用電估算`,1080),80,110);
+  let y=160;x.font=CF(700,22);x.fillText('家具設備',80,y);y+=34;x.font=CF(500,20);
+  const g=roomGroup(it.p.objs),col=3,cw=1080/col;g.forEach(([nm,cnt],i)=>{const cx=80+(i%col)*cw,cy=y+Math.floor(i/col)*30;if(cy<700)x.fillText(fit(x,`${nm} ×${cnt}`,cw-16),cx,cy)});
+  y+=Math.min(Math.ceil(g.length/col),18)*30+30;
+  x.fillStyle=INK;x.font=CF(700,22);x.fillText('用電估算（初步，須由合格電匠確認）',80,y);y+=20;
+  const cols=[[0,'迴路',300],[300,'電壓',80],[380,'負載VA',120],[500,'電流A',100],[600,'開關',110],[710,'線徑',150],[860,'漏電',80],[940,'設備數',140]];
+  y=tableHead(x,y,cols);
+  for(const ci of e.circuits){if(y>TB-260)break;const cells=[ci.name,ci.v+'V',String(Math.round(ci.VA)),ci.I.toFixed(1),ci.nfb+'A',ci.wire,ci.elcb?'要':'—',String(ci.items.length)];
+    x.fillStyle=INK;x.font=CF(500,19);cols.forEach(([cx,,w],j)=>x.fillText(fit(x,cells[j],w-14),80+cx+8,y+32));y+=46;x.fillStyle='#E3E7EB';x.fillRect(80,y-1,1080,1)}
+  y+=40;x.fillStyle=INK;x.font=CF(600,21);
+  for(const l of e.circuits.length?[`總負載 ${(e.totVA/1000).toFixed(2)} kVA，需量後 ${(e.dmdVA/1000).toFixed(2)} kVA，主幹電流約 ${e.Imain.toFixed(0)} A`,
+    `主開關 ${e.mainNfb}A・主幹線 ${e.mainWire}・匯流排 ${e.bus||'—'}A・分路 ${e.circuits.length} 路（配電箱建議 ${e.slots} 位）`]:['沒有用電設備']){x.fillText(fit(x,l,1080),80,y);y+=34}
+  x.font=CF(500,18);x.fillStyle=MUTED;for(const t of e.notes)for(const l of lines(x,'・'+t,1080)){if(y>TB-20)break;x.fillText(l,80,y);y+=28}
+  return c}
 async function photoPage(p,ids,n,N){
   const [c,x]=newPage();sheet(x,p,'現場照片',n,N);x.fillStyle=INK;x.font=CF(700,32);x.fillText('現場照片',80,110);
   const bw=1080,bh=(TB-150-40)/2-10;
@@ -1376,12 +1979,12 @@ async function exportPDF(){
   busy(true,'正在產生 PDF…');
   try{
     const sum=chunks(p.items,ROWS_SUM),qo=settings.pdfQuote&&hasPrices()?chunks(p.items,ROWS_Q):[],ph=settings.pdfPhotos?chunks(p.photos,2):[];
-    const nb=p.items.filter(it=>it.type==='canopy').length,N=sum.length+qo.length+p.items.length+nb+ph.length;let n=0;
+    const nb=p.items.filter(it=>it.type==='canopy'||it.type==='room').length,N=sum.length+qo.length+p.items.length+nb+ph.length;let n=0;
     const doc=new window.jspdf.jsPDF({unit:'pt',format:'a4',compress:true});
     const add=cv=>{if(n>1)doc.addPage();doc.addImage(cv.toDataURL('image/jpeg',0.88),'JPEG',0,0,595.28,841.89);cv.width=cv.height=0};
     for(let i=0;i<sum.length;i++){n++;add(summaryPage(p,sum[i],i*ROWS_SUM,n,N,i===sum.length-1))}
     for(let i=0;i<qo.length;i++){n++;add(quotePage(p,qo[i],i*ROWS_Q,n,N,i===qo.length-1))}
-    for(const it of p.items){n++;busy(true,`正在產生 PDF…（${n}/${N}）`);add(await itemPage(p,it,n,N));if(it.type==='canopy'){n++;add(bomPage(p,it,n,N))}}
+    for(const it of p.items){n++;busy(true,`正在產生 PDF…（${n}/${N}）`);add(await itemPage(p,it,n,N));if(it.type==='canopy'){n++;add(bomPage(p,it,n,N))}else if(it.type==='room'){n++;add(roomPage(p,it,n,N))}}
     for(const ch of ph){n++;add(await photoPage(p,ch,n,N))}
     const blob=doc.output('blob');busy(false);await saveFile(fname(p,'施工圖','pdf'),blob);
   }catch(err){toast('匯出失敗：'+(err&&err.message||err))}
@@ -1401,6 +2004,8 @@ function exportCSV(){
   const rows=p.items.map((it,i)=>{const x=it.p,m=metrics(it),amt=hasPrices()?itemQuote(it).amt:'';
     if(it.type==='canopy'){const M=canopyModel(x);return [i+1,it.loc,'採光罩',fmtLen(M.Lx),fmtLen(M.y1),it.qty,x.panel,'',x.color,
       `${x.shape} 後高${fmtLen(M.Hb)} 前高${fmtLen(M.Hf)} 立柱${M.posts.length} ${x.frame} ${x.drain} 斜度${m.ang.toFixed(1)}° 板材${m.cells}片(異形${m.cut}) 開孔${m.holes} 出簷${fmtLen(x.ovF)}`,'',m.m2.toFixed(2),amt,it.note]}
+    if(it.type==='room'){const e=ROOM.elec(x.objs);return [i+1,it.loc,'室內平面圖',fmtLen(x.RW),fmtLen(x.RD),it.qty,'','','',
+      `${specText(it)} 負載${(e.totVA/1000).toFixed(2)}kVA 主開關${e.circuits.length?e.mainNfb+'A':'—'}`,'',m.m2.toFixed(2),amt,it.note]}
     return [i+1,it.loc,TYPES[it.type].n,fmtLen(x.W),fmtLen(x.H),it.qty,x.series||'',x.glass||'',x.color,specText(it),m.cai.toFixed(1),'',amt,it.note]});
   const meta=[['業主',p.name],['電話',p.phone],['地址',p.addr],['日期',p.date],[]];
   const csv='\uFEFF'+[...meta,head,...rows].map(r=>r.map(q).join(',')).join('\r\n');
@@ -1451,9 +2056,10 @@ async function importBackup(file){
 }
 /* ================= AI ================= */
 function effectDesc(it){const p=it.p,m=metrics(it),M=v=>(Math.round((+v||0)/10)/100);
+  if(it.type==='room')return `一間寬 ${M(p.RW)} 公尺、深 ${M(p.RD)} 公尺、天花板高 ${M(p.RH)} 公尺的室內空間（${(ROOM.tplBy[p.tpl]||{}).n||'室內'}），配置：${roomGroup(p.objs).filter(([n])=>!/插座|燈|資訊|弱電|配電|攝影|基地台/.test(n)).map(([n,c])=>c>1?n+c+'件':n).join('、')}。`;
   if(it.type==='canopy'){const C=canopyModel(p),encs=C.enc.map(e=>`${({front:'前面',left:'左側',right:'右側'})[e.e.kind]}${e.t}`).join('、');
     return `在房屋外牆加裝一座鋁製採光罩：${p.shape==='矩形'?'':`外形為${p.shape}（不規則平面），`}沿牆長約 ${M(C.Lx)} 公尺、向外出挑約 ${M(C.y1)} 公尺，靠牆高度 ${M(C.Hb)} 公尺、前端高度 ${M(C.Hf)} 公尺，斜度約 ${m.ang.toFixed(0)} 度。${p.frame}，顏色${p.color}，屋面為${p.panel}，一格一格分割，${C.posts.length?`${C.posts.length} 支立柱`:'掛壁式、沒有立柱'}${+p.ovF?`，前緣出簷約 ${Math.round(p.ovF/10)} 公分`:''}${p.gutter?'，前緣有鋁製排水溝與落水管':''}${encs?`，${encs}封起來（類似玻璃屋）`:''}。`}
-  const ex=it.type==='slide'?`${p.panels} 扇橫拉`:it.type==='fixed'?`${p.cols}×${p.rows} 分割固定`:it.type==='casement'?`${p.sash} 扇${p.dir}`:it.type==='louver'?'鋁百葉':p.style;
+  const ex=it.type==='slide'?`${p.panels} 扇橫拉`:it.type==='fixed'?`${p.cols}×${p.rows} 分割固定`:it.type==='casement'?`${p.sash} 扇${p.dir}`:it.type==='louver'?'鋁百葉':it.type==='shaped'?p.form:p.style;
   return `在牆面開口安裝${p.color}鋁框${p.series?p.series:''}${TYPES[it.type].n}（${ex}），寬 ${M(p.W)} 公尺、高 ${M(p.H)} 公尺${p.glass?`，玻璃為${p.glass}`:''}${p.screen?'，附紗窗':''}。`}
 function showPrompt(p,it){
   const d=effectDesc(it);
@@ -1470,7 +2076,7 @@ function aiErr(err){const c=err&&err.code;
   return 'AI 暫時無法使用：'+(err&&err.message||err)}
 async function aiQuick(p){
   const ta=$('#aiQuick'),txt=(ta&&ta.value||'').trim();if(!txt)return toast('先輸入要新增的項目描述');
-  const spec=Object.entries(TYPES).map(([k,t])=>`${k}（${t.n}）: ${t.f.filter(f=>f!=='tri'&&['len','int','sel','bool'].includes(FIELDS[f].t)).map(f=>{const F=FIELDS[f];return F.t==='sel'?`${f}(${F.o.join('|')})`:F.t==='bool'?`${f}(true|false)`:`${f}(${F.t==='len'?'mm整數':'整數'})`}).join(', ')}`).join('\n');
+  const spec=Object.entries(TYPES).filter(([k])=>k!=='room').map(([k,t])=>`${k}（${t.n}）: ${t.f.filter(f=>f!=='tri'&&['len','int','sel','bool'].includes(FIELDS[f].t)).map(f=>{const F=FIELDS[f];return F.t==='sel'?`${f}(${F.o.join('|')})`:F.t==='bool'?`${f}(true|false)`:`${f}(${F.t==='len'?'mm整數':'整數'})`}).join(', ')}`).join('\n');
   const prompt=`你是台灣鋁門窗與採光罩的丈量助手。把使用者的口語描述轉成項目清單。
 規則：
 - 長度一律換算成 mm 整數。使用者沒寫單位時，數字單位是「${unit==='cm'?'公分':'公釐'}」；寫「米」「公尺」要換算；「90乘60」代表寬90、高60。
@@ -1503,9 +2109,11 @@ async function aiCheck(p,it){
   const out=$('#aiOut'),btn=$('#aiBtn');
   if(aiCtl){aiCtl.abort();aiCtl=null;return}
   const data={類型:TYPES[it.type].n,位置:it.loc,數量:it.qty,備註:it.note,規格:specRows(it).map(r=>r.join('：')).join('；'),系統提醒:warnings(it)};
+  if(it.type==='room'){const e=ROOM.elec(it.p.objs);data.家具設備=roomGroup(it.p.objs).map(([n,c])=>n+'×'+c).join('、');
+    data.用電估算=e.circuits.map(c=>`${c.name} ${Math.round(c.VA)}VA ${c.nfb}A ${c.wire}${c.elcb?' ELCB':''}`).join('；')+`；主開關${e.mainNfb}A 匯流排${e.bus}A`}
   if(it.type==='canopy'){data.材料明細=canopyBOM(it).map(r=>r.join('：')).join('；');data.障礙物=(it.p.obs||[]).map(o=>`${o.type}/${o.mode}/${o.note||''}`)}
   const imgs=[];for(const id of aiSel){const d=photoCache.get(id)||await store.get('photo:'+id);if(d)imgs.push(dataURLtoBlob(d))}
-  const prompt=`你是台灣資深鋁門窗與採光罩師傅，正在幫同行檢查現場丈量資料。請用繁體中文、條列、精簡回答（300 字內），分成四段：
+  const prompt=`${it.type==='room'?'你是台灣資深室內設計師兼甲種電匠，正在幫同行檢查室內平面配置與用電規劃（動線、尺寸、插座與迴路）。':'你是台灣資深鋁門窗與採光罩師傅，正在幫同行檢查現場丈量資料。'}請用繁體中文、條列、精簡回答（300 字內），分成四段：
 一、可能漏量或需要再確認的尺寸
 二、施工風險（防水、結構、颱風、鄰房或違建疑慮只需提醒）
 三、規格建議
