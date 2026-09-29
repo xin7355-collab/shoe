@@ -249,7 +249,8 @@ const LOCS=['客廳','主臥','次臥','小孩房','書房','廚房','浴室','�
 const DEF_SETTINGS={co:{name:'',phone:'',addr:'',taxid:'',line:'',staff:''},logo:null,
   prices:{slide:0,fixed:0,casement:0,louver:0,shaped:0,door:0,canopy:0,room:0},minCai:0,tax:false,
   terms:'1. 本報價有效期限 30 天。\n2. 尺寸以現場丈量為準，下單後依實際尺寸計價。\n3. 訂金 30%，完工驗收後付清尾款。',
-  pdfQuote:true,pdfPhotos:true,wake:true,lastBackup:''};
+  pdfQuote:true,pdfPhotos:true,pdfRenders:true,wake:true,lastBackup:'',
+  render:{style:'',light:'day',view:'eye',tool:'chatgpt',ref:'3d',lang:'zh'}};
 
 /*@@PURE-START 室內平面：家具庫、範本產生器、構想解析、用電估算。
  * 這一段只放純計算、不碰 DOM，tests/selftest.js 會單獨抽出來離線驗證；改這段請同步跑 node tests/selftest.js。 */
@@ -519,6 +520,58 @@ const ROOM=(()=>{
   ];
   return {CATS,C,byK,search,elec,load,NFB,WIRE,BUS,pickNFB,pickWire,TPL,tplBy,make,parseIdea,fromIdea,cnNum,toMM,PROJ,rot,oid};
 })();
+
+/* ---------- AI 渲染提示詞（純字串組合，給 ChatGPT／Gemini／Midjourney／Stable Diffusion） ---------- */
+const RENDER=(()=>{
+  const O=(id,zh,en)=>({id,zh,en});
+  const STYLES=[O('modern','現代簡約','modern minimalist interior, clean lines, neutral palette'),O('nordic','北歐','Scandinavian style, light wood, white walls, cozy textiles'),
+    O('muji','日式無印','Japanese minimalist, light oak, linen, calm atmosphere'),O('industrial','工業風','industrial loft, exposed concrete, black steel, warm Edison lights'),
+    O('luxe','輕奢','modern luxury, marble, brushed brass accents, elegant'),O('warm','溫馨木質','warm natural wood, soft beige tones, homely'),
+    O('tech','科技辦公','high-tech corporate office, glass partitions, LED linear lights, sleek finishes'),
+    O('eoc','指揮中心','emergency operations center, mission control room, large video wall, cool blue ambient lighting, professional'),
+    O('facade','建築外觀','contemporary Taiwanese residential facade, realistic street context')];
+  const LIGHTS=[O('day','白天自然光','soft natural daylight'),O('dusk','黃昏暖光','golden hour warm sunlight'),O('night','夜間燈光','night scene, warm interior lighting glowing'),O('overcast','陰天柔光','overcast diffused light')];
+  const VIEWS=[O('eye','人視角','eye-level perspective, 35mm lens'),O('wide','廣角全景','wide-angle interior shot, 16mm lens'),O('bird','鳥瞰','isometric bird’s-eye view'),O('front','正面','straight-on front elevation view')];
+  const TOOLS=[O('chatgpt','ChatGPT','ChatGPT'),O('gemini','Gemini','Gemini'),O('mj','Midjourney','Midjourney'),O('sd','Stable Diffusion','Stable Diffusion')];
+  const REFS=[O('3d','3D 截圖','3D screenshot'),O('photo','現場照片','site photo'),O('none','不附圖','no reference')];
+  const pick=(arr,id)=>arr.find(x=>x.id===id)||arr[0];
+  /* 家具英文名（Midjourney／SD 對中文理解差）；空字串＝插座、弱電等不寫進畫面描述 */
+  const EN={desk:'office desk',desk12:'compact desk',deskL:'L-shaped desk',exec:'executive desk',standing:'height-adjustable standing desk',bench:'4-person workstation bench with partitions',
+    chair:'ergonomic office chair',mchair:'meeting chair',vchair:'guest chair',stool:'bar stool',hex:'hexagonal collaboration table',trap:'modular trapezoid table',
+    flip:'flip-top mobile training table',wb:'mobile whiteboard',bar:'standing bar table',pod1:'single phone booth pod',pod2:'two-person meeting pod',bean:'bean bag',
+    steps:'tiered bleacher seating',touch:'86-inch interactive touch display',eocdesk:'operator console with dual monitors',cmd:'commander desk',vwall:'large video wall',
+    radio:'radio communication console',ups:'UPS cabinet',rack:'server rack',map:'large map table',mtable:'long conference table',rtable:'round meeting table',
+    tv:'wall-mounted TV',proj:'ceiling projector',vc:'video conferencing camera',printer:'multifunction printer',water:'water dispenser',coffee:'coffee machine',
+    file:'filing cabinet',ward:'wardrobe',book:'bookshelf',locker:'lockers',sofa3:'three-seat sofa',sofa1:'armchair',tea:'coffee table',tvcab:'TV console',
+    bedD:'double bed',bedQ:'queen bed',bedS:'single bed',nstand:'nightstand',dtable:'dining table',dchair:'dining chair',k1:'straight kitchen counter',
+    kL:'L-shaped kitchen counter',island:'kitchen island',islandS:'kitchen island with sink',sink:'kitchen sink',hood:'range hood',ih:'induction cooktop',gas:'gas stove',
+    fridge:'refrigerator',fridgeB:'side-by-side refrigerator',oven:'built-in oven',micro:'microwave',dish:'dishwasher',wc:'toilet',wcE:'smart toilet',basin:'vanity with basin',
+    basin2:'double vanity',shower:'walk-in shower',tub:'bathtub',glass:'glass shower partition',glassS:'sliding glass shower door',heatfan:'bathroom heater fan',
+    wh:'electric water heater',washer:'washing machine',dryer:'clothes dryer',out:'',outF:'',outW:'',out220:'',ac:'split air conditioner',ac2:'split air conditioner',
+    panel:'',weak:'',rj45:'',ap:'',cctv:'security camera',led:'LED panel lights',down:'recessed downlights',elight:'',exit:'exit sign',door:'door',door2:'double door',sdoor:'sliding door',win:'window'};
+  const TPL_EN={blank:'room',meet:'meeting room',eoc:'emergency operations center',office:'open-plan office',agile:'collaborative workspace',boss:'executive office',
+    training:'training room',kit1:'kitchen',kitL:'L-shaped kitchen',kitI:'open kitchen with island',bath:'bathroom with wet-dry separation',bath2:'bathroom with bathtub',suite:'bedroom suite',living:'living room'};
+  const WIN_EN={slide:'sliding window',fixed:'fixed picture window',casement:'casement window',louver:'aluminum louver window',
+    '拱形窗':'arched window','圓窗':'round window','八角窗':'octagonal window','斜頂梯形窗':'raked trapezoid window','內開內倒窗':'tilt-and-turn window','上懸窗':'awning window','折疊窗':'bi-fold window','凸窗（三面）':'three-sided bay window',
+    '單開':'single swing door','雙開':'double swing door','子母門':'unequal double entrance door','橫拉門':'sliding door','雙橫拉門':'four-panel sliding door','折疊門':'bi-fold door',
+    '穀倉門':'barn door on exposed rail','自動感應門':'automatic sliding glass door','防火門':'fire-rated steel door','玄關門（含側窗）':'entrance door with sidelight'};
+  const COLOR_EN={'白色':'white','銀色':'silver','香檳金':'champagne gold','咖啡色':'bronze brown','黑色':'matte black','其他':'aluminum'};
+  const glassEn=g=>!g?'':/霧/.test(g)?'frosted glass':/強化/.test(g)?'tempered glass':/膠合/.test(g)?'laminated glass':/複層/.test(g)?'double glazing':/綠/.test(g)?'green tinted glass':'clear glass';
+  const NEG='text, watermark, logo, lowres, blurry, distorted perspective, deformed furniture, extra legs, cluttered, cartoon';
+  /* o：{zh 中文主體描述, en 英文主體描述, style, light, view, tool, ref, lang('zh'|'en'), kind('interior'|'exterior')} */
+  function compose(o){const st=pick(STYLES,o.style),li=pick(LIGHTS,o.light),vw=pick(VIEWS,o.view),tool=pick(TOOLS,o.tool).id,ref=pick(REFS,o.ref).id;
+    const ext=o.kind==='exterior',what=ext?'建築外觀效果圖':'室內設計效果圖',whatEn=ext?'architectural exterior rendering':'interior design rendering';
+    if(tool==='mj'||tool==='sd'){const pos=[o.en,st.en,li.en,vw.en,'photorealistic '+whatEn,'realistic materials, accurate proportions, ultra detailed, 8k'].filter(Boolean).join(', ');
+      if(tool==='mj')return {text:(ref!=='none'?'[先把'+(ref==='3d'?' 3D 截圖':'現場照片')+'上傳到 Midjourney，把圖片網址貼在這一行最前面] ':'')+pos+' --ar 16:9 --style raw'+(ref!=='none'?' --iw 1.5':''),neg:''};
+      return {text:pos,neg:NEG+(ref!=='none'?'':''),tip:ref==='none'?'':`搭配 ControlNet（${ref==='3d'?'depth／canny':'img2img'}）載入${ref==='3d'?' 3D 截圖':'現場照片'}，可保留配置與構圖。`}}
+    const refZh=ref==='3d'?'請以我上傳的 3D 截圖為構圖與配置依據：家具、門窗的位置、比例與視角都不要改，只把材質、光影、細節畫成寫實照片。'
+      :ref==='photo'?'請以我上傳的現場照片為底圖，保持原本的建築、拍攝角度與光線不變，只加上下列施工內容，不要改動其他物件。':'';
+    const refEn=ref==='3d'?'Use my uploaded 3D screenshot as the exact layout and camera reference: keep every furniture, door and window position, proportion and viewpoint; only turn materials, lighting and details photorealistic.'
+      :ref==='photo'?'Use my uploaded site photo as the base image; keep the existing building, camera angle and lighting, only add the following work, change nothing else.':'';
+    if(o.lang==='en')return {text:`Create a photorealistic ${whatEn}. ${refEn} Content: ${o.en}. Style: ${st.en}. Lighting: ${li.en}. Camera: ${vw.en}. Requirements: accurate proportions, realistic materials and reflections, no text, no watermark. Aspect ratio 16:9.`.replace(/\s+/g,' ').trim(),neg:''};
+    return {text:`請畫一張寫實的${what}（16:9 橫式）。${refZh}\n空間內容：${o.zh}\n風格：${st.zh}；光線：${li.zh}；視角：${vw.zh}。\n要求：寫實攝影質感、比例正確、材質與反光真實，畫面不要出現任何文字、尺寸標註或浮水印。`,neg:''}}
+  return {STYLES,LIGHTS,VIEWS,TOOLS,REFS,EN,TPL_EN,WIN_EN,COLOR_EN,glassEn,NEG,compose,pick};
+})();
 /*@@PURE-END*/
 
 
@@ -585,7 +638,7 @@ function flush(){clearTimeout(saveT);clearTimeout(saveST);store.set('projects',p
 addEventListener('pagehide',flush);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flush()});
 function mergeSettings(s){const d=JSON.parse(JSON.stringify(DEF_SETTINGS));if(!s||typeof s!=='object')return d;
-  const o={...d,...s,co:{...d.co,...(s.co||{})},prices:{...d.prices,...(s.prices||{})}};
+  const o={...d,...s,co:{...d.co,...(s.co||{})},prices:{...d.prices,...(s.prices||{})},render:{...d.render,...(s.render&&typeof s.render==='object'?s.render:{})}};
   if(typeof o.logo!=='string'||!/^data:image\/(png|jpe?g|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(o.logo))o.logo=null;
   for(const k of Object.keys(o.co))o.co[k]=String(o.co[k]??'');o.terms=String(o.terms??'');return o}
 async function refreshLogo(){logoImg=null;if(settings.logo){try{logoImg=await loadImg(settings.logo)}catch(e){}}}
@@ -598,6 +651,8 @@ function normProject(p){const o={status:STATUS[0],extra:0,extraNote:'',phone:'',
   if(!STATUS.includes(o.status))o.status=STATUS[0];o.extra=Number.isFinite(+o.extra)?+o.extra:0;
   o.photos=(Array.isArray(o.photos)?o.photos:[]).map(String).filter(x=>/^[A-Za-z0-9_-]{1,40}$/.test(x));
   o.items=(Array.isArray(o.items)?o.items:[]).filter(it=>it&&TYPES[it.type]&&it.p&&typeof it.p==='object').map(it=>{const u=upgradeItem(it);
+    u.renders=(Array.isArray(u.renders)?u.renders:[]).filter(r=>r&&/^[A-Za-z0-9_-]{1,40}$/.test(String(r.id))).map(r=>({id:String(r.id),at:String(r.at||''),note:String(r.note||'').slice(0,200)}));
+    u.prompts=(Array.isArray(u.prompts)?u.prompts:[]).filter(q=>q&&typeof q.text==='string').slice(0,30).map(q=>({id:safeId(q.id),text:q.text.slice(0,4000),neg:String(q.neg||'').slice(0,1000),tool:String(q.tool||''),style:String(q.style||''),at:String(q.at||'')}));
     u.id=safeId(u.id);u.loc=String(u.loc??'');u.note=String(u.note??'');u.qty=clamp(parseInt(u.qty,10)||1,1,999);return u});return o}
 
 function newItem(type){const t=TYPES[type];const p=JSON.parse(JSON.stringify(t.d));
@@ -1535,11 +1590,13 @@ function renderItem(p,it){
     </div>
     ${isC?canopyForm(it):''}${isR?roomSections(it):''}
     <datalist id="locs">${LOCS.map(l=>`<option value="${l}">`).join('')}</datalist>
-    <h2>AI 助手</h2>
+    <h2>AI 渲染與助手</h2>
     <div class="panel"><div class="pad stack">
-      <button class="b" data-act="prompt">產生效果圖提示詞（搭配現場照片）</button>
-      ${AI?`${aiPhotos}<button class="b primary" data-act="aiCheck" id="aiBtn">AI 檢查這個項目</button>`:''}
+      <button class="b primary" data-act="prompt">產生 AI 渲染提示詞（3D／效果圖）</button>
+      <p class="note" style="margin:0">可選風格、光線、視角與 ChatGPT／Gemini／Midjourney／Stable Diffusion，搭配 3D 截圖或現場照片。</p>
+      ${AI?`${aiPhotos}<button class="b" data-act="aiCheck" id="aiBtn">AI 檢查這個項目</button>`:''}
     </div><div class="ai-out" id="aiOut"></div></div>
+    ${galleryHTML(it)}
     <h2>操作</h2>
     <div class="stack">
       <div class="two"><button class="b primary" data-act="png">匯出圖片</button><button class="b" data-act="dxfOne">CAD 圖檔</button></div>
@@ -1551,6 +1608,7 @@ function renderItem(p,it){
   if(is3d)mount3D($('#v3'),it);
   if(isR&&!is3d)bindDrag();
   if(aiPhotos)loadThumbs(p);
+  loadIds((it.renders||[]).map(r=>r.id));
 }
 let r3T=null;
 function refreshItem(){const it=curItem();if(!it)return;
@@ -1558,6 +1616,8 @@ function refreshItem(){const it=curItem();if(!it)return;
   if($('#v3')){clearTimeout(r3T);r3T=setTimeout(()=>{const box=$('#v3');if(box)mount3D(box,curItem())},500)}
   $('#metric').innerHTML=metricHTML(it);
   if(it.type==='room'){const e=$('#elec');if(e)e.innerHTML=elecHTML(ROOM.elec(it.p.objs));const l=$('#olist');if(l)l.innerHTML=objListHTML(it)}}
+async function loadIds(ids){for(const id of ids){const els=app.querySelectorAll(`img[data-pid="${id}"]`);if(!els.length)continue;
+  let d=photoCache.get(id);if(!d){d=await store.get('photo:'+id);if(d)cachePhoto(id,d)}if(d)els.forEach(el=>el.src=d)}}
 async function loadThumbs(p){for(const id of p.photos){const els=app.querySelectorAll(`img[data-pid="${id}"]`);if(!els.length)continue;
   let d=photoCache.get(id);if(!d){d=await store.get('photo:'+id);if(d)cachePhoto(id,d)}if(d)els.forEach(el=>el.src=d)}}
 
@@ -1665,6 +1725,7 @@ function renderSettings(){
     <div class="panel form">
       <label class="fld tog"><span>附報價單</span><input type="checkbox" data-sf="pdfQuote" ${s.pdfQuote?'checked':''}></label>
       <label class="fld tog"><span>附現場照片</span><input type="checkbox" data-sf="pdfPhotos" ${s.pdfPhotos?'checked':''}></label>
+      <label class="fld tog"><span>附 AI 效果圖</span><input type="checkbox" data-sf="pdfRenders" ${s.pdfRenders!==false?'checked':''}></label>
       <label class="fld full"><span>報價條款</span><textarea data-sf="terms">${esc(s.terms)}</textarea></label>
     </div>
     <h2>現場工具</h2>
@@ -1691,6 +1752,7 @@ function onField(e){const t=e.target;
     if(t.id==='photoIn'){addPhotos(Array.from(t.files||[]));t.value='';return}
     if(t.id==='logoIn'){setLogo(t.files&&t.files[0]);t.value='';return}
     if(t.id==='importIn'){importBackup(t.files&&t.files[0]);t.value='';return}
+    if(t.id==='renderIn'){addRenders(Array.from(t.files||[]));t.value='';return}
   }
   if(t.id==='q'){query=t.value;$('#plist').innerHTML=cardsHTML();return}
   if(t.id==='catQ'||t.id==='catC'){if(t.id==='catQ')catQ=t.value;else catC=t.value;const l=$('#clist');if(l)l.innerHTML=catalogHTML();return}
@@ -1789,10 +1851,10 @@ app.addEventListener('click',async e=>{
     case 'postAuto':it.p.posts=canopyModel({...it.p,postMode:'自動'}).posts.map(q=>q.map(Math.round));save();return render();
     case 'obAdd':it.p.obs.push(newObs(b.dataset.t,it.p));save();render();return toast('已加入，請輸入實際位置');
     case 'obDel':if(!await ask('刪除這個障礙物？'))return;it.p.obs.splice(+b.dataset.i,1);save();return render();
-    case 'dupItem':{const c=JSON.parse(JSON.stringify(it));c.id=uid();p.items.splice(p.items.indexOf(it)+1,0,c);save();go('item',p.id,c.id);return toast('已複製，可修改位置與尺寸')}
-    case 'delItem':if(!await ask('刪除這個項目？'))return;p.items=p.items.filter(i=>i.id!==view.iid);save();return go('project',p.id);
+    case 'dupItem':{const c=JSON.parse(JSON.stringify(it));c.id=uid();c.renders=[];/* 渲染圖檔不共用，避免刪一邊連另一邊的圖一起刪掉 */p.items.splice(p.items.indexOf(it)+1,0,c);save();go('item',p.id,c.id);return toast('已複製，可修改位置與尺寸')}
+    case 'delItem':if(!await ask('刪除這個項目？（含它的效果圖）'))return;for(const r of it.renders||[]){photoCache.delete(r.id);await store.del('photo:'+r.id)}p.items=p.items.filter(i=>i.id!==view.iid);save();return go('project',p.id);
     case 'delProject':if(!await ask('刪除整個案場與照片？刪除後無法復原。'))return;
-      for(const id of p.photos)await store.del('photo:'+id);projects=projects.filter(x=>x.id!==p.id);flush();return go('list');
+      for(const id of p.photos)await store.del('photo:'+id);for(const x of p.items)for(const r of x.renders||[])await store.del('photo:'+r.id);projects=projects.filter(x=>x.id!==p.id);flush();return go('list');
     case 'photo':{if(!await ask('刪除這張照片？'))return;const id=b.dataset.id;p.photos=p.photos.filter(x=>x!==id);photoCache.delete(id);await store.del('photo:'+id);save();return render()}
     case 'aiPick':{const id=b.dataset.id,max=Math.min(3,AIimg?AIimg.maxCount:0);
       if(aiSel.has(id))aiSel.delete(id);else{if(aiSel.size>=max)return toast(`最多選 ${max} 張`);aiSel.add(id)}
@@ -1807,6 +1869,9 @@ app.addEventListener('click',async e=>{
     case 'backupOne':return backup([p]);
     case 'backupAll':return backup(projects);
     case 'prompt':return showPrompt(p,it);
+    case 'renderView':return viewRender(it,b.dataset.id);
+    case 'pCopy':{const q=(it.prompts||[]).find(x=>x.id===b.dataset.id);if(q)copyText(q.text+(q.neg?'\n\nNegative prompt: '+q.neg:''));return}
+    case 'pDel':{if(!await ask('刪除這則提示詞？'))return;it.prompts=(it.prompts||[]).filter(x=>x.id!==b.dataset.id);save();return render()}
     case 'aiQuick':return aiQuick(p);
     case 'aiCheck':return aiCheck(p,it);
   }
@@ -1964,8 +2029,9 @@ function roomPage(p,it,n,N){
     `主開關 ${e.mainNfb}A・主幹線 ${e.mainWire}・匯流排 ${e.bus||'—'}A・分路 ${e.circuits.length} 路（配電箱建議 ${e.slots} 位）`]:['沒有用電設備']){x.fillText(fit(x,l,1080),80,y);y+=34}
   x.font=CF(500,18);x.fillStyle=MUTED;for(const t of e.notes)for(const l of lines(x,'・'+t,1080)){if(y>TB-20)break;x.fillText(l,80,y);y+=28}
   return c}
-async function photoPage(p,ids,n,N){
-  const [c,x]=newPage();sheet(x,p,'現場照片',n,N);x.fillStyle=INK;x.font=CF(700,32);x.fillText('現場照片',80,110);
+async function photoPage(p,ids,n,N,title){
+  const [c,x]=newPage();sheet(x,p,title?'AI 效果圖':'現場照片',n,N);x.fillStyle=INK;x.font=CF(700,32);x.fillText(fit(x,title||'現場照片',1080),80,110);
+  if(title){x.font=CF(500,18);x.fillStyle=MUTED;x.fillText('AI 產生之示意圖，材質與顏色以實際施工為準。',80,138)}
   const bw=1080,bh=(TB-150-40)/2-10;
   for(let i=0;i<ids.length;i++){const d=await store.get('photo:'+ids[i]);if(!d)continue;const img=await loadImg(d);
     const s=Math.min(bw/img.naturalWidth,bh/img.naturalHeight),w=img.naturalWidth*s,h=img.naturalHeight*s,yy=140+i*(bh+20);
@@ -1979,12 +2045,14 @@ async function exportPDF(){
   busy(true,'正在產生 PDF…');
   try{
     const sum=chunks(p.items,ROWS_SUM),qo=settings.pdfQuote&&hasPrices()?chunks(p.items,ROWS_Q):[],ph=settings.pdfPhotos?chunks(p.photos,2):[];
-    const nb=p.items.filter(it=>it.type==='canopy'||it.type==='room').length,N=sum.length+qo.length+p.items.length+nb+ph.length;let n=0;
+    const rp=settings.pdfRenders!==false?p.items.reduce((a,it)=>a+Math.ceil((it.renders||[]).length/2),0):0;
+    const nb=p.items.filter(it=>it.type==='canopy'||it.type==='room').length,N=sum.length+qo.length+p.items.length+nb+rp+ph.length;let n=0;
     const doc=new window.jspdf.jsPDF({unit:'pt',format:'a4',compress:true});
     const add=cv=>{if(n>1)doc.addPage();doc.addImage(cv.toDataURL('image/jpeg',0.88),'JPEG',0,0,595.28,841.89);cv.width=cv.height=0};
     for(let i=0;i<sum.length;i++){n++;add(summaryPage(p,sum[i],i*ROWS_SUM,n,N,i===sum.length-1))}
     for(let i=0;i<qo.length;i++){n++;add(quotePage(p,qo[i],i*ROWS_Q,n,N,i===qo.length-1))}
-    for(const it of p.items){n++;busy(true,`正在產生 PDF…（${n}/${N}）`);add(await itemPage(p,it,n,N));if(it.type==='canopy'){n++;add(bomPage(p,it,n,N))}else if(it.type==='room'){n++;add(roomPage(p,it,n,N))}}
+    for(const it of p.items){n++;busy(true,`正在產生 PDF…（${n}/${N}）`);add(await itemPage(p,it,n,N));if(it.type==='canopy'){n++;add(bomPage(p,it,n,N))}else if(it.type==='room'){n++;add(roomPage(p,it,n,N))}
+      if(settings.pdfRenders!==false)for(const ch of chunks((it.renders||[]).map(r=>r.id),2)){n++;add(await photoPage(p,ch,n,N,`#${p.items.indexOf(it)+1} ${it.loc||TYPES[it.type].n} AI 效果圖（示意）`))}}
     for(const ch of ph){n++;add(await photoPage(p,ch,n,N))}
     const blob=doc.output('blob');busy(false);await saveFile(fname(p,'施工圖','pdf'),blob);
   }catch(err){toast('匯出失敗：'+(err&&err.message||err))}
@@ -2029,7 +2097,7 @@ async function backup(list){
   if(!list.length)return toast('沒有可備份的案場');busy(true,'正在打包備份…');
   try{/* 分批串流：照片逐張讀出、逐張轉成 Blob 片段，避免整包照片同時留在記憶體（低記憶體手機防 OOM） */
     const head={app:'mw-measure',v:2,at:new Date().toISOString(),projects:list,settings:list===projects?settings:undefined};
-    const parts=[JSON.stringify(head).slice(0,-1)+',"photos":{'];let first=true,i=0;const ids=list.flatMap(p=>p.photos);
+    const parts=[JSON.stringify(head).slice(0,-1)+',"photos":{'];let first=true,i=0;const ids=list.flatMap(p=>[...p.photos,...p.items.flatMap(x=>(x.renders||[]).map(r=>r.id))]);
     for(const id of ids){const d=await store.get('photo:'+id);if(!d)continue;
       parts.push(new Blob([(first?'':',')+JSON.stringify(id)+':'+JSON.stringify(d)]));first=false;
       if(++i%5===0)busy(true,`正在打包備份…（${i}/${ids.length}）`)}
@@ -2061,13 +2129,73 @@ function effectDesc(it){const p=it.p,m=metrics(it),M=v=>(Math.round((+v||0)/10)/
     return `在房屋外牆加裝一座鋁製採光罩：${p.shape==='矩形'?'':`外形為${p.shape}（不規則平面），`}沿牆長約 ${M(C.Lx)} 公尺、向外出挑約 ${M(C.y1)} 公尺，靠牆高度 ${M(C.Hb)} 公尺、前端高度 ${M(C.Hf)} 公尺，斜度約 ${m.ang.toFixed(0)} 度。${p.frame}，顏色${p.color}，屋面為${p.panel}，一格一格分割，${C.posts.length?`${C.posts.length} 支立柱`:'掛壁式、沒有立柱'}${+p.ovF?`，前緣出簷約 ${Math.round(p.ovF/10)} 公分`:''}${p.gutter?'，前緣有鋁製排水溝與落水管':''}${encs?`，${encs}封起來（類似玻璃屋）`:''}。`}
   const ex=it.type==='slide'?`${p.panels} 扇橫拉`:it.type==='fixed'?`${p.cols}×${p.rows} 分割固定`:it.type==='casement'?`${p.sash} 扇${p.dir}`:it.type==='louver'?'鋁百葉':it.type==='shaped'?p.form:p.style;
   return `在牆面開口安裝${p.color}鋁框${p.series?p.series:''}${TYPES[it.type].n}（${ex}），寬 ${M(p.W)} 公尺、高 ${M(p.H)} 公尺${p.glass?`，玻璃為${p.glass}`:''}${p.screen?'，附紗窗':''}。`}
+function enDesc(it){const p=it.p,M=v=>(Math.round((+v||0)/10)/100),RD=RENDER;
+  if(it.type==='room'){const m=new Map();for(const o of p.objs||[]){const n=RD.EN[o.k];if(n)m.set(n,(m.get(n)||0)+1)}
+    return `a ${M(p.RW)}m x ${M(p.RD)}m ${RD.TPL_EN[p.tpl]||'room'} with ${[...m.entries()].map(([n,c])=>c>1?`${n} (x${c})`:`a ${n}`).join(', ')||'no furniture yet'}`}
+  if(it.type==='canopy'){const C=canopyModel(p),pan=/玻璃/.test(p.panel)?'glass':/鋁/.test(p.panel)?'aluminum':'polycarbonate';
+    return `an aluminum patio canopy with ${pan} roof panels attached to a Taiwanese house facade, about ${M(C.Lx)}m long and ${M(C.y1)}m deep, ${RD.COLOR_EN[p.color]||'aluminum'} frame${C.posts.length?`, ${C.posts.length} support posts`:', wall-mounted without posts'}${p.gutter?', front gutter with downpipe':''}`}
+  const tp=it.type==='shaped'?p.form:it.type==='door'?p.style:it.type;
+  return `a ${RD.COLOR_EN[p.color]||'aluminum'} aluminum ${RD.WIN_EN[tp]||'window'}${p.series?` (${/隔音/.test(p.series)?'soundproof ':''}${/氣密|隔音/.test(p.series)?'airtight':''})`.replace(' ()',''):''}, ${M(p.W)}m wide x ${M(p.H)}m high${p.glass?', '+RD.glassEn(p.glass):''}${p.screen?', with insect screen':''}, installed in a residential wall opening`}
+function autoStyle(it){return it.type==='room'?(it.p.tpl==='eoc'?'eoc':['meet','office','agile','boss','training'].includes(it.p.tpl)?'tech':'modern'):'facade'}
+function buildPrompt(it){const r=settings.render,RD=RENDER;
+  return RD.compose({zh:effectDesc(it),en:enDesc(it),style:r.style||autoStyle(it),light:r.light,view:r.view,tool:r.tool,ref:r.ref,lang:r.lang,kind:it.type==='room'?'interior':'exterior'})}
 function showPrompt(p,it){
-  const d=effectDesc(it);
-  const txt=`【照片合成版｜請同時上傳現場照片】\n請以我上傳的現場照片為底圖，保持原本的建築、拍攝角度與光線不變，${d}\n要求：寫實照片風格、比例正確、鋁材金屬質感與玻璃反光真實，不要改動其他物件，不要加任何文字或浮水印。\n\n【純文字版】\n一張台灣透天住宅的寫實建築攝影，${d}白天自然光，構圖清楚，像專業施工完成照。`;
-  const m=modal(`<p><b>效果圖提示詞</b><br><span style="font-size:14px;color:var(--muted)">複製後貼到 ChatGPT 或 Gemini，照片合成版要一起上傳現場照片。</span></p>
-    <textarea readonly id="ptxt">${esc(txt)}</textarea><div class="sheet-row"><button class="b" data-r="close">關閉</button><button class="b primary" data-r="copy">複製</button></div>`,
-    (e,mm)=>{const b=e.target.closest('[data-r]');if(!b)return;if(b.dataset.r==='copy')copyText(txt);else mm.remove()});
+  const RD=RENDER,sel=(k,arr,extra)=>`<select data-rk="${k}" aria-label="${k}">${extra||''}${arr.map(x=>`<option value="${x.id}" ${settings.render[k]===x.id?'selected':''}>${esc(x.zh)}</option>`).join('')}</select>`;
+  let cur=null,busyAI=false;
+  const m=modal('<div id="pbox"></div>',async(e,mm)=>{const b=e.target.closest('[data-r]');if(!b)return;const r=b.dataset.r;
+    if(r==='close')return mm.remove();
+    const txt=mm.querySelector('#ptxt').value,neg=(mm.querySelector('#pneg')||{}).value||'';
+    if(r==='copy')return copyText(txt);
+    if(r==='copyneg')return copyText(neg);
+    if(r==='save'){it.prompts=it.prompts||[];it.prompts.unshift({id:uid(),text:txt,neg,tool:settings.render.tool,style:settings.render.style||autoStyle(it),at:today()});
+      it.prompts=it.prompts.slice(0,30);save();toast('已存到這個項目的「效果圖庫」');return}
+    if(r==='shot'){if(V3){const bl=await V3.shot();if(bl)await saveFile(fname(p,`${p.items.indexOf(it)+1}_3D參考圖`,'png'),bl);return}
+      mm.remove();view.tab='3d';render();return toast('已切到 3D：轉到想要的角度，再按一次「產生渲染提示詞」下載截圖')}
+    if(r==='polish'&&AI&&!busyAI){busyAI=true;b.disabled=true;b.textContent='AI 潤飾中…';const ta=mm.querySelector('#ptxt');
+      try{await AI(`你是專業的建築與室內設計視覺化提示詞工程師。請把下面這段給 ${RD.pick(RD.TOOLS,settings.render.tool).zh} 的效果圖提示詞改寫得更具體（材質、光影、鏡頭、氛圍），保留原本的語言、參數與所有尺寸、配置、參考圖指示，不要加入原本沒有的家具或施工項目。只輸出改寫後的提示詞本身。\n\n${txt}`,
+          {onText:({text})=>{ta.value=text}})}
+      catch(err){toast(aiErr(err))}
+      finally{busyAI=false;b.disabled=false;b.textContent='AI 潤飾'}}});
+  const draw=()=>{cur=buildPrompt(it);const r=settings.render,tool=RD.pick(RD.TOOLS,r.tool).id,ref=RD.pick(RD.REFS,r.ref).id;
+    const how=tool==='mj'||tool==='sd'?'英文提示詞（這兩個工具看不太懂中文）':`貼到 ${RD.pick(RD.TOOLS,tool).zh}`+(ref==='3d'?'，並一起上傳 3D 截圖':ref==='photo'?'，並一起上傳現場照片':'');
+    m.querySelector('#pbox').innerHTML=`<p><b>AI 渲染提示詞</b><br><span style="font-size:14px;color:var(--muted)">${how}。算好的圖可以存回「效果圖庫」。</span></p>
+      <div class="two" style="margin-bottom:8px">${sel('style',RD.STYLES,`<option value="" ${!r.style?'selected':''}>自動（${esc(RD.pick(RD.STYLES,autoStyle(it)).zh)}）</option>`)}${sel('light',RD.LIGHTS)}</div>
+      <div class="two" style="margin-bottom:8px">${sel('view',RD.VIEWS)}${sel('tool',RD.TOOLS)}</div>
+      <div class="two" style="margin-bottom:10px">${sel('ref',RD.REFS)}${tool==='mj'||tool==='sd'?'<span></span>':sel('lang',[{id:'zh',zh:'中文提示詞'},{id:'en',zh:'英文提示詞'}])}</div>
+      <textarea id="ptxt" aria-label="提示詞">${esc(cur.text)}</textarea>
+      ${cur.neg?`<p class="note" style="margin:0 0 4px">負面提示詞（Negative prompt）</p><textarea id="pneg" readonly style="min-height:70px">${esc(cur.neg)}</textarea>`:''}
+      ${cur.tip?`<p class="note">${esc(cur.tip)}</p>`:''}
+      <div class="sheet-row" style="margin-bottom:10px"><button class="b primary" data-r="copy">複製提示詞</button>${cur.neg?'<button class="b" data-r="copyneg">複製負面詞</button>':'<button class="b" data-r="save">存到效果圖庫</button>'}</div>
+      <div class="sheet-row" style="margin-bottom:10px">${ref==='3d'?`<button class="b" data-r="shot">${V3?'下載 3D 截圖':'切到 3D 取截圖'}</button>`:'<span></span>'}${cur.neg?'<button class="b" data-r="save">存到效果圖庫</button>':AI?'<button class="b" data-r="polish">AI 潤飾</button>':'<span></span>'}</div>
+      <button class="b ghost" data-r="close">關閉</button>`};
+  m.addEventListener('change',e=>{const k=e.target.dataset&&e.target.dataset.rk;if(!k)return;settings.render[k]=e.target.value;saveSettings();draw()});
+  draw();
 }
+function galleryHTML(it){const rs=it.renders||[],ps=it.prompts||[];
+  return `<h2>效果圖庫</h2>
+  <div class="panel"><div class="pad stack">
+    <div class="photos">${rs.map(r=>`<button class="ph" data-act="renderView" data-id="${esc(r.id)}" aria-label="渲染圖"><img data-pid="${esc(r.id)}" alt=""></button>`).join('')}<label class="addph" for="renderIn">＋ 上傳 AI 渲染圖</label></div>
+    <input type="file" id="renderIn" class="vh" accept="image/*" multiple>
+    <p class="note" style="margin:0">把 ChatGPT／Gemini／Midjourney 算好的圖存回這裡：存在這支手機、會跟著「備份」一起帶走，也可在設定勾選放進 PDF。</p>
+    ${ps.length?`<details data-sec="prompts"${isOpen('prompts',false)?' open':''}><summary class="note" style="cursor:pointer;margin:0;font-weight:600">已存提示詞（${ps.length}）</summary>
+      <div class="stack" style="margin-top:8px">${ps.map(q=>`<div class="citem" style="display:block"><small>${esc(q.at)}　${esc(RENDER.pick(RENDER.TOOLS,q.tool).zh)}　${esc(RENDER.pick(RENDER.STYLES,q.style).zh)}</small>
+        <div style="font-size:13px;margin:4px 0 8px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;white-space:pre-wrap">${esc(q.text)}</div>
+        <div class="two"><button class="b" data-act="pCopy" data-id="${esc(q.id)}">複製</button><button class="b danger" data-act="pDel" data-id="${esc(q.id)}">刪除</button></div></div>`).join('')}</div></details>`:''}
+  </div></div>`}
+async function addRenders(files){const p=cur(),it=curItem();if(!it||!files.length)return;busy(true,'正在存渲染圖…');let fail=0;it.renders=it.renders||[];
+  /* 逐張壓縮、逐張寫入，不一次把多張大圖留在記憶體 */
+  try{for(const f of files){try{const d=await compress(f,1800,0.82);const id=uid();await store.set('photo:'+id,d);it.renders.push({id,at:today(),note:''});cachePhoto(id,d)}catch(err){fail++}}
+    save();render();toast(fail?`${fail} 張無法讀取`:`已存 ${files.length} 張到效果圖庫`)}
+  finally{busy(false)}}
+async function viewRender(it,id){const d=photoCache.get(id)||await store.get('photo:'+id);if(!d)return toast('找不到這張圖，可能已被刪除');
+  const r=(it.renders||[]).find(x=>x.id===id)||{};
+  const m=modal(`<img src="${esc(d)}" alt="渲染圖" style="width:100%;border-radius:10px;display:block;margin-bottom:12px">
+    <p class="note" style="margin:0 0 10px">${esc(r.at||'')}</p>
+    <div class="sheet-row" style="margin-bottom:10px"><button class="b primary" data-r="dl">下載／分享</button><button class="b danger" data-r="del">刪除</button></div>
+    <button class="b ghost" data-r="close">關閉</button>`,async(e,mm)=>{const b=e.target.closest('[data-r]');if(!b)return;
+    if(b.dataset.r==='close')return mm.remove();
+    if(b.dataset.r==='dl')return saveFile(fname(cur(),`${cur().items.indexOf(it)+1}_效果圖`,'jpg'),dataURLtoBlob(d));
+    if(b.dataset.r==='del'){mm.remove();if(!await ask('刪除這張渲染圖？'))return;it.renders=it.renders.filter(x=>x.id!==id);photoCache.delete(id);await store.del('photo:'+id);save();render()}})}
 function aiErr(err){const c=err&&err.code;
   if(c==='not_granted')return 'AI 功能未獲授權。';
   if(c==='rate_limited')return 'AI 使用太頻繁，請稍後再試。';

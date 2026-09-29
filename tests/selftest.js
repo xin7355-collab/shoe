@@ -6,7 +6,7 @@ const fs=require('fs'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 const m=html.match(/\/\*@@PURE-START[\s\S]*?\*\/([\s\S]*?)\/\*@@PURE-END\*\//);
 if(!m){console.error('✗ 找不到 @@PURE 區塊');process.exit(1)}
-const R=new Function(m[1]+'\nreturn ROOM;')();
+const {ROOM:R,RENDER:RD}=new Function(m[1]+'\nreturn {ROOM,RENDER};')();
 let fail=0,pass=0;
 const ok=(c,msg)=>{if(c)pass++;else{fail++;console.error('✗ '+msg)}};
 const near=(a,b,t)=>Math.abs(a-b)<=(t||0.01);
@@ -56,5 +56,17 @@ ok(R.parseIdea('L型廚房').tpl==='kitL'&&R.parseIdea('有浴缸的浴室').tpl
 ok(R.cnNum('二十')===20&&R.cnNum('十五')===15&&R.cnNum('八')===8,'中文數字');
 ok(R.parseIdea('隨便').tpl==='blank','無法判斷時用空白房間');
 for(const t of R.PROJ)for(const [ty] of t.items)ok(['slide','fixed','casement','louver','door','canopy','shaped','room'].includes(ty),'整案範本類型：'+ty);
+
+// AI 渲染提示詞
+for(const c of R.C)ok(c.k in RD.EN,'家具缺英文名：'+c.k);
+for(const t of R.TPL)ok(t.id in RD.TPL_EN,'範本缺英文名：'+t.id);
+let pr=RD.compose({zh:'8 人會議室',en:'a meeting room',style:'nordic',light:'dusk',view:'eye',tool:'chatgpt',ref:'3d'});
+ok(pr.text.includes('北歐')&&pr.text.includes('黃昏暖光')&&pr.text.includes('3D 截圖')&&pr.text.includes('8 人會議室'),'ChatGPT 中文提示詞含風格、光線、參考圖、內容');
+pr=RD.compose({zh:'x',en:'a kitchen',style:'modern',tool:'gemini',ref:'none',lang:'en'});ok(/^Create a photorealistic/.test(pr.text)&&!pr.text.includes('screenshot'),'英文版、不附圖時不提截圖');
+pr=RD.compose({en:'a bathroom',tool:'mj',ref:'3d'});ok(pr.text.includes('--ar 16:9')&&pr.text.includes('--iw')&&pr.text.includes('a bathroom'),'Midjourney 參數與參考圖權重');
+pr=RD.compose({en:'an office',tool:'sd',ref:'3d'});ok(pr.neg.includes('watermark')&&pr.tip.includes('ControlNet'),'SD 有負面提示詞與 ControlNet 提示');
+pr=RD.compose({zh:'採光罩',en:'a canopy',tool:'chatgpt',ref:'photo',kind:'exterior'});ok(pr.text.includes('建築外觀')&&pr.text.includes('現場照片'),'外觀＋現場照片版');
+ok(RD.compose({en:'x',style:'不存在',tool:'不存在'}).text.length>0,'未知選項退回預設');
+ok(RD.glassEn('5mm 霧面玻璃')==='frosted glass'&&RD.glassEn('')==='','玻璃英文');
 
 console.log(`${fail?'✗':'✓'} 自我測試：通過 ${pass}、失敗 ${fail}`);process.exit(fail?1:0);

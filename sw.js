@@ -2,7 +2,7 @@
  * - 自家檔案（index.html 等）：網路優先，失敗才用快取 → 有網路時永遠拿到最新版。
  * - CDN 函式庫（jsPDF、three.js、字型）：快取優先 → 下載一次後離線可用。
  * 改版時把 VERSION +1，舊快取會在 activate 時清掉。 */
-const VERSION = 'v3';
+const VERSION = 'v4';
 const CORE = `core-${VERSION}`;
 const CDN = `cdn-${VERSION}`;
 const CORE_FILES = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png'];
