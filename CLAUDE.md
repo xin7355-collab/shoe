@@ -69,4 +69,5 @@
   - 照片以 dataURL 存 IndexedDB；任何「一次讀全部照片」的寫法都會讓低記憶體 iPhone 當掉，要逐張處理。
   - 室內平面圖的純邏輯（家具庫 `ROOM.C`、範本 `ROOM.TPL`、構想解析、用電估算 `ROOM.elec`）放在 index.html 的 `@@PURE-START`～`@@PURE-END` 區塊，不可碰 DOM；改完跑 `node tests/selftest.js`（部署工作流也會跑）。
   - 用電估算是「初步估算」，文案必須保留「須由合格電匠／電機技師依用戶用電設備裝置規則確認」。
-  - 測試：`python3 -m http.server` + Playwright（Chromium 在 /opt/pw-browsers）；測 3D 時要 `serviceWorkers:'block'`，否則 SW 會繞過 route 攔截。
+  - 整層平面配置的純邏輯 `FLOOR`（牆、門窗、房間偵測、方案產生器 `FLOOR.gen`、自動擺家具）也在 PURE 區塊：單位 mm、原點在外框左上；外牆固定 id `N/E/S/W`；內牆只允許水平／垂直（房間偵測用壓縮格點 flood fill，斜牆會被 `normWall` 轉正）；門窗以「牆 id＋沿牆距離 s」掛在牆上；`virt:true` 是分區線（不蓋牆、但會分房間）。方案一律以「大門在南」排版，再旋轉／鏡射到實際方位。
+  - 測試：`python3 -m http.server` + Playwright（Chromium 在 /opt/pw-browsers）；測 3D 時要 `serviceWorkers:'block'`，否則 SW 會繞過 route 攔截。主程式包在 IIFE 裡，測試要讀資料就從 IndexedDB `mw-measure` 的 `kv/projects` 讀（存檔有 350ms 延遲）；`pg.click` 會自動捲動頁面，點 3D／2D 畫布前要重新量位置。
