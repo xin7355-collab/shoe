@@ -17,7 +17,7 @@
 | 檔案 | 用途 |
 |---|---|
 | `index.html` | 整個 App（HTML＋CSS＋JS 單檔） |
-| `tests/selftest.js` | 離線自我測試（`node tests/selftest.js`，驗證家具庫、範本、構想解析、用電計算、整層平面的房間偵測與方案產生） |
+| `tests/selftest.js` | 離線自我測試（`node tests/selftest.js`，驗證家具庫、範本、構想解析、用電計算、整層平面、繞一圈丈量、DAE 輸出） |
 | `sw.js` | Service Worker（離線快取；改版時把 `VERSION` +1） |
 | `manifest.webmanifest`、`icon-*.png` | PWA 安裝資訊與圖示 |
 | `docs/features.md` | 功能說明 |

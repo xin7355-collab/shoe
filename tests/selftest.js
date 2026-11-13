@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-/* 丈量大師 離線自我測試：從 index.html 抽出 @@PURE 區塊（家具庫、範本、構想解析、用電估算）單獨驗證。
+/* 丈量大師 離線自我測試：從 index.html 抽出 @@PURE 區塊（家具庫、範本、構想解析、用電估算、整層平面、DAE 寫出）單獨驗證。
  * 用法：node tests/selftest.js　（不需網路、不需安裝套件） */
 'use strict';
 const fs=require('fs'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 const m=html.match(/\/\*@@PURE-START[\s\S]*?\*\/([\s\S]*?)\/\*@@PURE-END\*\//);
 if(!m){console.error('✗ 找不到 @@PURE 區塊');process.exit(1)}
-const {ROOM:R,RENDER:RD,FLOOR:FL}=new Function(m[1]+'\nreturn {ROOM,RENDER,FLOOR};')();
+const {ROOM:R,RENDER:RD,FLOOR:FL,DAE}=new Function(m[1]+'\nreturn {ROOM,RENDER,FLOOR,DAE};')();
 let fail=0,pass=0;
 const ok=(c,msg)=>{if(c)pass++;else{fail++;console.error('✗ '+msg)}};
 const near=(a,b,t)=>Math.abs(a-b)<=(t||0.01);
@@ -137,4 +137,51 @@ const it2=FL.toItems(pls[0].plan);ok(it2.length===pls[0].plan.openings.length&&i
 let pi=FL.parseIdea('三房兩廳兩衛 11x8.2米 入口在南邊 開放式廚房',{});ok(pi.beds===3&&pi.baths===2&&pi.FW===11000&&pi.FD===8200&&pi.entry==='S'&&pi.kitchen==='open','需求文字解析：'+JSON.stringify(pi));
 ok(FL.parseIdea('2房1衛 大門朝東',{}).entry==='E'&&FL.parseIdea('2房1衛',{}).beds===2,'房數與東側入口');
 
+// 繞一圈丈量：閉合、誤差分配、轉角檢查、方位、凹口（非室內）、門窗掛牆
+{const R4=(a,b)=>({first:'S',walls:[{len:a,turn:'R'},{len:b,turn:'R'},{len:a,turn:'R'},{len:b,turn:'R'}]});let S=FL.survey(R4(5000,4000));
+  ok(S.ok&&S.W===5000&&S.D===4000&&near(S.area,20e6,1),'矩形 5×4m 繞一圈');ok(S.pts[0][1]===4000&&S.pts[1][1]===4000,'第一面牆畫在下方（南）');
+  let q=R4(5000,4000);q.walls[3].len=null;S=FL.survey(q);ok(S.ok&&S.autoLen===4000&&S.D===4000,'最後一面牆留白自動算');
+  q=R4(5000,4000);q.walls[3].len=null;q.autoLast=false;ok(!FL.survey(q).ok,'關掉自動算時最後一面也要填');
+  q=R4(5000,4000);q.walls[1].len=null;S=FL.survey(q);ok(!S.ok&&S.err.includes('第 2 面'),'中間的牆沒填長度會指出是第幾面');
+  q=R4(5000,4000);q.walls[2].len=5030;S=FL.survey(q);ok(S.ok&&S.warn.some(w=>w.includes('閉合差'))&&S.W>5000&&S.W<5030&&S.pts.every(p=>p.every(Number.isInteger)),'閉合差 3 公分依比例分配、座標取整數');
+  q=R4(5000,4000);q.walls[1].turn='L';S=FL.survey(q);ok(!S.ok&&S.err.includes('轉角'),'轉角選錯會被抓出來');
+  q=R4(5000,4000);q.walls[2].len=6500;S=FL.survey(q);ok(!S.ok&&S.err.includes('沒有繞回'),'長度差太多會提醒');
+  ok(!FL.survey({walls:[{len:1000},{len:1000},{len:1000}]}).ok&&!FL.survey(null).ok,'少於 4 面牆、空資料都不會當掉');
+  S=FL.survey({first:'S',walls:[5000,4000,5000,4000].map(l=>({len:l,turn:'L'}))});ok(S.ok&&S.W===5000&&S.D===4000&&!S.cw,'往左繞（逆時針）也能算');
+  for(const [f,w,h,y] of [['N',5000,4000,0],['E',4000,5000,null],['W',4000,5000,null]]){q=R4(5000,4000);q.first=f;S=FL.survey(q);ok(S.ok&&S.W===w&&S.D===h&&(y==null||S.pts[0][1]===y),'第一面牆在 '+f)}
+  S=FL.survey({first:'S',autoLast:true,walls:[[4000,'R'],[3000,'R'],[5000,'L'],[4000,'R'],[1000,'R'],[1000,'R'],[3000,'L'],[null,'R']].map(([len,turn])=>({len,turn}))});ok(!S.ok&&S.err.includes('交叉'),'形狀打結（牆交叉）會被抓出來');
+  const Lsv={first:'S',walls:[{len:10000,turn:'R',ops:[{k:'win',from:1000,w:1500,h:1200,sill:900}]},{len:8000,turn:'R',ops:[{k:'win',from:2000,w:1200,sill:''}]},{len:6000,turn:'R'},{len:3000,turn:'L'},
+    {len:4000,turn:'R',ops:[{k:'door',from:500,w:900,entry:true},{k:'door',from:2000,w:900,entry:true}]},{len:5000,turn:'R'}]};
+  const r=FL.fromSurvey(Lsv,{ext:200,int:120,RH:2800}),P=r.plan;
+  ok(!r.err&&P.FW===10400&&P.FD===8400,'L 形：外框＝外接矩形＋兩倍外牆厚');
+  ok(r.notch===2&&P.walls.every(w=>w.outer&&w.t===200)&&P.walls.some(w=>w.x1===6300&&w.y1===100&&w.y2===3200)&&P.walls.some(w=>w.y1===3100&&w.x1===6200&&w.x2===10300),'L 形：兩道凹口牆往外偏半個牆厚、凸角延長接上外牆中心線');
+  ok(r.voids===1&&P.labels.filter(l=>l.type==='void').length===1&&P.labels.some(l=>l.name==='室內'&&l.type==='other'),'凹口標成「非室內」，其餘是一個室內空間');
+  const sm=FL.summary(P);ok(near(sm.tot,71.64,0.01)&&sm.list.length===1,`非室內不計坪（${sm.tot.toFixed(2)} m²）`);
+  ok(!FL.check(P).warn.length,'丈量出來的外框沒有格局警告：'+FL.check(P).warn.join('；'));
+  const ops=P.openings;ok(ops.length===4&&ops.some(o=>o.wall==='S'&&o.s===8350&&o.w===1500)&&ops.some(o=>o.wall==='W'&&o.s===5500&&o.sill===900),'門窗依「距起點牆角」掛到正確的牆與位置（窗台留白用預設 90 公分）');
+  const dr=ops.filter(o=>o.k==='door');ok(dr.length===2&&dr.filter(o=>o.entry).length===1&&dr[0].side===1&&P.walls.some(w=>w.id===dr[0].wall),'凹口牆上的大門往室內開、大門只會有一個');
+  const pcs=FL.wallPieces(P);ok(Math.max(...pcs.filter(q=>q.wall==='N').map(q=>q.x1))===6400&&Math.min(...pcs.filter(q=>q.wall==='E').map(q=>q.y0))===3000,'外框貼著非室內的那段牆不蓋，退到凹口牆外緣');
+  ok(pcs.filter(q=>P.walls.some(w=>w.id===q.wall)).every(q=>q.ext),'凹口牆照外牆畫（外牆顏色與剖面線）');
+  ok(FL.toItems(P).every(x=>!x.loc.includes('非室內'))&&FL.toItems(P).some(x=>x.loc==='入口玄關'),'門窗轉丈量項目時位置不會寫成「非室內」');
+  const rr=FL.fromSurvey(R4(3000,2500),{ext:150});ok(!rr.err&&rr.plan.FW===3300&&rr.plan.FD===2800&&rr.notch===0&&rr.voids===0,'小房間（3×2.5m）也能建立，不被最小尺寸卡住');
+  ok(FL.fromSurvey({walls:[]},{}).err,'無效的丈量不會產生平面')}
+// DAE（COLLADA 1.4.1）寫出：結構、參照、數量、名稱合法性
+{const sq={c:'#C8955E',mat:'木地板',p:[0,0,0,1,0,0,1,0,1,0,0,1],n:[0,1,0,0,1,0,0,1,0,0,1,0],i:[0,1,2,0,2,3]};
+  const gl={c:'#8fc3e8',a:0.35,mat:'玻璃',p:[0,0,0,1,0,0,0,1,0],i:[0,1,2]};
+  const tree={name:'王公館 3房2廳（測試）',children:[{name:'外牆 北（含窗）',parts:[sq,gl]},{name:'空群組',children:[{name:'',parts:[]}]},{name:'<b>&"x',parts:[sq]},{name:'12 號櫃',parts:[{c:'bad',p:[0,0,0,1,0,0,0,0,1],i:[0,1,2]}]}]};
+  const x=DAE.write(tree,'2026-01-01T00:00:00Z');
+  ok(x.startsWith('<?xml')&&x.includes('<COLLADA xmlns="http://www.collada.org/2005/11/COLLADASchema" version="1.4.1">'),'DAE 有 XML 宣告與 COLLADA 1.4.1 根元素');
+  const names=[...x.matchAll(/ name="([^"]*)"/g)].map(q=>q[1]);ok(names.length>=6&&names.every(n=>/^[\p{L}_][\p{L}\p{Nd}._-]*$/u.test(n)),'所有 name 都是合法 NCName：'+names.join(','));
+  ok(!x.includes('空群組'),'沒有幾何的空群組不輸出');
+  const ids=[...x.matchAll(/ id="([^"]+)"/g)].map(q=>q[1]);ok(new Set(ids).size===ids.length,'id 不重複');
+  const refs=[...x.matchAll(/(?:url|target|source)="#([^"]+)"/g)].map(q=>q[1]);ok(refs.length>0&&refs.every(r=>ids.includes(r)),'所有 # 參照都指得到');
+  ok([...x.matchAll(/<triangles material="([^"]+)"/g)].every(q=>ids.includes(q[1])),'三角形的材質符號都有對應材質');
+  ok([...x.matchAll(/<float_array id="[^"]+" count="(\d+)">([^<]*)<\/float_array>/g)].every(q=>+q[1]===q[2].trim().split(/\s+/).length),'float_array 的 count 與數字個數相符');
+  ok([...x.matchAll(/<triangles material="[^"]+" count="(\d+)">[\s\S]*?<p>([^<]*)<\/p>/g)].every(q=>q[2].trim().split(/\s+/).length===+q[1]*6),'三角形 count 與索引數相符（頂點＋法向量兩組）');
+  ok(x.includes('<transparent opaque="A_ONE">')&&(x.match(/<material /g)||[]).length===3,'玻璃輸出半透明、同色同透明度共用材質（3 種）');
+  ok(x.includes('0.784 0.584 0.369 1'),'色碼轉成 0～1 的 RGB');
+  ok(/<unit name="meter" meter="1"\/>/.test(x)&&x.includes('<up_axis>Y_UP</up_axis>'),'單位公尺、Y 軸朝上');
+  const st=[];let bad=false;for(const q of x.matchAll(/<(\/?)([A-Za-z_][\w:.-]*)[^>]*?(\/?)>/g)){if(q[3])continue;if(q[1]){if(st.pop()!==q[2])bad=true}else st.push(q[2])}ok(!bad&&!st.length,'XML 標籤正確配對');
+  let threw=false;try{DAE.write({name:'空',children:[{name:'x',parts:[{c:'#FFFFFF',p:[],i:[]}]}]})}catch(e){threw=true}ok(threw,'整棵樹沒有幾何時丟出錯誤（不交出空檔案）');
+  ok(DAE.nc('12 牆')==='_12_牆'&&DAE.nc('外牆（北）')==='外牆_北'&&DAE.nc('')==='_'&&DAE.nc('-a')==='_-a','名稱轉 NCName 的邊界情況')}
 console.log(`${fail?'✗':'✓'} 自我測試：通過 ${pass}、失敗 ${fail}`);process.exit(fail?1:0);
