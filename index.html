@@ -161,6 +161,9 @@ details.panel+details.panel,details.panel+.panel{margin-top:10px}
 .sv-help{background:#0F1E33;border:1px solid #24405F;border-radius:12px;padding:8px 12px;color:#C8D6E5;font-size:14px}
 .sv-help summary{cursor:pointer;font-weight:700;color:#E6EEF7;min-height:32px;display:flex;align-items:center}
 .sv-help ol{margin:8px 0;padding-left:20px}.sv-help li{margin:5px 0;line-height:1.55}
+.dx{display:grid;gap:8px;margin:10px 0 4px;padding:10px;border:1px solid #2E5A86;border-radius:12px;background:#0D1B2E}
+.dx-h{display:flex;align-items:center;gap:8px}.dx-h b{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dx-u{display:flex;align-items:center;gap:8px;color:#C8D6E5}.dx-u select{flex:1}
 .sv-top{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;font-size:14px;color:#C8D6E5}
 .sv-top select,.sv-top input{width:auto;min-height:38px;padding:4px 8px;background-color:#13233A;color:#E6EEF7;border-color:#24405F;font-size:15px}
 .sv-top input[data-svk="ext"]{width:70px}
@@ -1107,6 +1110,232 @@ ${geos.map(({id,name,q,mt})=>{const nv=Math.floor(q.p.length/3),nt=Math.floor(q.
 </COLLADA>
 `}
   return {write,nc}})();
+/* ---------- 匯入光達掃描 App 的 DXF → 整層平面 ----------
+   網頁讀不到光達，所以讓有光達的 iPhone／iPad Pro 用掃描 App 掃完匯出 DXF，再轉成這裡的平面。
+   各 App 的寫法不同：牆可能是單線、雙線或矩形，單位可能是公尺／公分／公釐，整張圖也可能是斜的——
+   所以依圖層名稱判斷用途、用牆的長度加權找主方向轉正、把牆的兩個面配成一道牆、門窗放進牆的缺口。 */
+const CADIN=(()=>{
+  const oid=ROOM.oid,UNIT={1:25.4,2:304.8,4:1,5:10,6:1000},MAXE=100000,DT=120;
+  /* MTEXT 格式碼、R12 的 \U+XXXX 中文、%%c 等特殊符號都要還原，房名才讀得對 */
+  function clean(s,mt){s=String(s).replace(/\\U\+([0-9A-Fa-f]{4})/g,(m,h)=>String.fromCharCode(parseInt(h,16))).replace(/%%[cC]/g,'Ø').replace(/%%[dD]/g,'°').replace(/%%[pP]/g,'±').replace(/%%%/g,'%');
+    if(mt)s=s.replace(/\\[Pp]/g,' ').replace(/\\[A-Za-z][^;\\{}]*;/g,'').replace(/\\[~]/g,' ').replace(/[{}]/g,'');
+    /* 控制字元（\x01 之類）留著會讓之後匯出的 DAE（XML）變成無效檔 */
+    return s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').replace(/\s+/g,' ').trim().slice(0,60)}
+  /* 串流解析：檔案一段一段餵進來（feed），不把整個 DXF 讀成一個大字串；3D 網格很大的檔案也不會撐爆 iPhone 記憶體。
+     圖元讀完（ENTITIES 段結束）就停，後面的 OBJECTS 段不讀；開頭不是 DXF 就馬上停，不會把整個非 DXF 檔讀完 */
+  function parser(){const out={ents:[],blocks:{},units:0,skip:{},cut:false},sk=t=>{out.skip[t]=(out.skip[t]||0)+1};
+    let buf='',code=null,ok=false,bad='',done=false,pre=0,sec='',wantSec=false,hv='',e=null,poly=null,blk=null,tgt=out.ents,cnt=0;
+    const num=v=>{const f=parseFloat(v);return Number.isFinite(f)?f:0};
+    const flush=()=>{if(!e)return;const x=e;e=null;const L=x[8]||'0';
+      if(x.T==='VERTEX'){if(poly&&!(x[70]&128)&&poly.v.length<MAXE)poly.v.push([x[10]||0,x[20]||0]);return}
+      if(x.T==='SEQEND'){if(poly){if(poly.mesh)sk('3D 網格');else if(++cnt>MAXE)out.cut=true;else tgt.push(poly)}poly=null;return}
+      if(x.T==='POLYLINE'){const f=x[70]|0;poly={T:'P',L,v:[],cl:f&1,mesh:f&(16|64)};return}
+      if(x.T==='BLOCK'){blk={name:x.S2||'',base:[x[10]||0,x[20]||0],ents:[]};tgt=blk.ents;return}
+      if(x.T==='ENDBLK'){if(blk)out.blocks[blk.name]=blk;blk=null;tgt=out.ents;return}
+      /* 只有留下來的圖元才算數：3D 網格面之類略過的不佔記憶體，算進上限的話，網格寫在平面圖前面時牆線會被截掉 */
+      if(/^(LINE|LWPOLYLINE|ARC|CIRCLE|TEXT|MTEXT|INSERT)$/.test(x.T)&&++cnt>MAXE){out.cut=true;return}
+      switch(x.T){
+        case 'LINE':tgt.push({T:'L',L,a:[x[10]||0,x[20]||0],b:[x[11]||0,x[21]||0]});break;
+        case 'LWPOLYLINE':if((x.V||[]).length>1)tgt.push({T:'P',L,v:x.V,cl:(x[70]|0)&1});break;
+        case 'ARC':tgt.push({T:'A',L,c:[x[10]||0,x[20]||0],r:x[40]||0,a0:x[50]||0,a1:x[51]||0});break;
+        case 'CIRCLE':tgt.push({T:'A',L,c:[x[10]||0,x[20]||0],r:x[40]||0,a0:0,a1:360});break;
+        case 'TEXT':case 'MTEXT':{const s=clean((x.S3||'')+(x.S1||''),x.T==='MTEXT');if(s)tgt.push({T:'X',L,p:[x[10]||0,x[20]||0],s,h:x[40]||0});break}
+        case 'INSERT':tgt.push({T:'I',L,b:x.S2||'',p:[x[10]||0,x[20]||0],sx:x[41]!=null?x[41]:1,sy:x[42]!=null?x[42]:1,r:x[50]||0});break;
+        default:sk(x.T)}};
+    const pair=(c,v)=>{
+      /* 開頭檢查：註解（999）之後第一組必須是「0／SECTION」，二進位 DXF、DWG、其他文字檔都在這裡擋掉 */
+      if(!ok){if(c===999&&++pre<50)return;if(c===0&&v.trim()==='SECTION'){ok=true;wantSec=true;return}bad='這不是 DXF 文字檔：請在掃描 App 選「DXF」匯出（DWG、二進位 DXF 不支援）';return}
+      if(c===0){flush();const t=v.trim();
+        if(t==='SECTION'){wantSec=true;return}if(t==='ENDSEC'){if(sec==='ENTITIES')done=true;sec='';return}if(t==='EOF'){done=true;return}
+        if(sec==='ENTITIES'||sec==='BLOCKS')e={T:t};return}
+      if(wantSec&&c===2){sec=v.trim();wantSec=false;return}
+      if(sec==='HEADER'){if(c===9)hv=v.trim();else if(hv==='$INSUNITS'&&c===70)out.units=parseInt(v,10)||0;return}
+      if(!e)return;
+      if(c===8)e[8]=v.trim();else if(c===2)e.S2=v.trim();else if(c===1)e.S1=v.slice(0,500);else if(c===3){if((e.S3||'').length<500)e.S3=(e.S3||'')+v.slice(0,500)}
+      else if(e.T==='LWPOLYLINE'&&(c===10||c===20)){e.V=e.V||[];if(c===10){if(e.V.length<MAXE)e.V.push([num(v),0])}else if(e.V.length)e.V[e.V.length-1][1]=num(v)}
+      else if(c===70)e[70]=parseInt(v,10)||0;else if(c>=10&&c<=59)e[c]=num(v)};
+    const line=l=>{if(l.endsWith('\r'))l=l.slice(0,-1);if(!ok&&code===null){if(l.charCodeAt(0)===0xFEFF)l=l.slice(1);if(!l.trim())return}if(code===null){const c=parseInt(l,10);if(Number.isNaN(c)){if(!ok)bad=bad||'這不是 DXF 文字檔：請在掃描 App 選「DXF」匯出（DWG、二進位 DXF 不支援）';code=-1}else code=c;return}
+      const c=code;code=null;pair(c,l)};
+    const stop=()=>!!bad||done;
+    return {stop,feed(chunk){if(stop())return;buf+=chunk;let i=0,j;while((j=buf.indexOf('\n',i))>=0){line(buf.slice(i,j));i=j+1;if(stop())break}buf=buf.slice(i);
+        /* 一行超過 1 MB 不可能是 DXF（避免沒有換行的大檔一直累積） */if(buf.length>1e6&&!stop())bad='檔案格式不對：找不到 DXF 的分行，請重新匯出 DXF'},
+      end(){if(!bad&&!done&&buf){line(buf);buf=''}if(bad)return {err:bad};if(!ok)return {err:'這不是 DXF 文字檔：請在掃描 App 選「DXF」匯出（DWG、二進位 DXF 不支援）'};
+        flush();if(poly&&!poly.mesh)tgt.push(poly);poly=null;return out}}}
+  const parse=txt=>{const P=parser();P.feed(String(txt||''));return P.end()};
+  /* 區塊（INSERT）展開成一般線條：套用插入點、縮放、旋轉；最多 4 層，避免自己參照自己無限展開 */
+  function flatten(list,M,dep,out,B){const P=q=>[M[0]*q[0]+M[2]*q[1]+M[4],M[1]*q[0]+M[3]*q[1]+M[5]],rot=Math.atan2(M[1],M[0])*180/Math.PI,sc=Math.sqrt(Math.abs(M[0]*M[3]-M[1]*M[2]))||1;
+    for(const e of list){if(out.length>MAXE)return;
+      if(e.T==='I'){const b=B[e.b];if(!b||dep>=4)continue;const r=e.r*Math.PI/180,c=Math.cos(r),s=Math.sin(r),sx=e.sx||1,sy=e.sy||1;
+        const T=[c*sx,s*sx,-s*sy,c*sy,0,0];T[4]=e.p[0]-(T[0]*b.base[0]+T[2]*b.base[1]);T[5]=e.p[1]-(T[1]*b.base[0]+T[3]*b.base[1]);
+        const N=[M[0]*T[0]+M[2]*T[1],M[1]*T[0]+M[3]*T[1],M[0]*T[2]+M[2]*T[3],M[1]*T[2]+M[3]*T[3],M[0]*T[4]+M[2]*T[5]+M[4],M[1]*T[4]+M[3]*T[5]+M[5]];
+        /* 區塊裡在「0」圖層的東西，照 CAD 慣例繼承插入那一層的圖層 */
+        const tmp=[];flatten(b.ents,N,dep+1,tmp,B);for(const q of tmp){if(q.L==='0')q.L=e.L;out.push(q)}continue}
+      if(e.T==='L')out.push({T:'L',L:e.L,a:P(e.a),b:P(e.b)});
+      else if(e.T==='P')out.push({T:'P',L:e.L,v:e.v.map(P),cl:e.cl});
+      else if(e.T==='A')out.push({T:'A',L:e.L,c:P(e.c),r:e.r*sc,a0:e.a0+rot,a1:e.a1+rot});
+      else if(e.T==='X')out.push({T:'X',L:e.L,p:P(e.p),s:e.s,h:e.h*sc})}}
+  /* 圖層用途：先排除標註、圖框、剖面線、家具、設備，再看門、窗、地板、牆 */
+  const ROLE=[['skip',/dim|anno|ttlb|title|border|frame|圖框|標題|patt|hatch|grid|furn|家具|eqpm|equip|fixt|powr|elec|light|text|note|iden|viewport|defpoints|object|opening|ceil|天花|物件|設備/i],
+    ['virt',/bndy|bound|分區|zone/i],['window',/window|wind|\bwin|窗|glaz|glass/i],['door',/door|門|门|swing|swng/i],['floor',/floor|flor|room|space|area|地板|樓板|房間|空間|區域/i],['wall',/wall|牆|墙|墻|partition|隔間/i]];
+  const roleOf=l=>{for(const [r,re] of ROLE)if(re.test(l))return r;return 'other'};
+  const RTK=[['master',/主臥|master/i],['bath',/浴|廁|衛|bath|toilet|wc|restroom|powder/i],['kitchen',/廚|kitchen/i],['dining',/餐|dining/i],['living',/客廳|起居|living|lounge|family/i],
+    ['entry',/玄關|entry|foyer|hall\b|entrance/i],['study',/書房|study|office|工作室/i],['storage',/儲|收納|storage|closet|pantry|laundry|洗衣/i],['balcony',/陽台|露台|balcony|terrace/i],
+    ['corridor',/走道|走廊|corridor|hallway/i],['bed',/臥|房間|bed|guest|kid/i]];
+  const typeOf=s=>{for(const [t,re] of RTK)if(re.test(s))return t;return 'other'};
+  /* 房名文字：圖層名有 text、標註、iden 的也要讀（房名常放在這些層）；只排除尺寸、圖框、家具設備、門窗編號 */
+  const TXSKIP=/dim|ttlb|title|border|圖框|標題|furn|家具|eqpm|equip|fixt|powr|elec|light|door|門|门|wind|\bwin|窗|glaz|glass|viewport|defpoints|patt|hatch|grid/i;
+  const noName=s=>s.length<1||/^[\s\d.,:×xX*+\-=/()（）]*(?:(?:m²|m2|㎡|mm|cm|m|坪|平方公尺|sq\.?\s*ft|ft|'|")[\s\d.,:×xX*+\-=/()（）]*)*$/i.test(s);
+  /* 「主臥室 3.8坪」「Bedroom 12.5 m²」：房名後面的面積去掉 */
+  const nameOf=s=>String(s).replace(/\s*[\d.,]+\s*(?:m²|m2|㎡|坪|平方公尺|sq\.?\s*ft|ft²)[\s\S]*$/i,'').trim().slice(0,12);
+  /* 圓弧掃過的角度（DXF 一律逆時針；區塊旋轉後角度可能超過 360） */
+  const swp=e=>((e.a1-e.a0)%360+360)%360||360;
+  function pip(pt,poly){let r=false;for(let i=0,j=poly.length-1;i<poly.length;j=i++){const a=poly[i],b=poly[j];if((a[1]>pt[1])!==(b[1]>pt[1])&&pt[0]<(b[0]-a[0])*(pt[1]-a[1])/(b[1]-a[1])+a[0])r=!r}return r}
+  function toPlan(D,opt){opt=opt||{};if(!D||D.err)return {err:(D&&D.err)||'沒有資料'};const warn=[];
+    const F=[];flatten(D.ents,[1,0,0,1,0,0],0,F,D.blocks||{});if(D.cut)warn.push('檔案很大，只讀了前 10 萬個圖元');
+    const R0=F.map(e=>({...e,role:roleOf(e.L)}));
+    const segsOf=pred=>{const s=[];for(const e of R0){if(!pred(e))continue;if(e.T==='L')s.push([e.a,e.b,e]);else if(e.T==='P'){for(let k=0;k+1<e.v.length;k++)s.push([e.v[k],e.v[k+1],e]);if(e.cl&&e.v.length>2)s.push([e.v[e.v.length-1],e.v[0],e])}}return s};
+    let raw=segsOf(e=>e.role==='wall'),src='wall';
+    if(!raw.length){raw=segsOf(e=>e.role==='other');src='other'}
+    const floors0=R0.filter(e=>e.role==='floor'&&e.T==='P'&&e.cl&&e.v.length>=3).map(e=>e.v);
+    if(!raw.length&&floors0.length){raw=floors0.flatMap(v=>v.map((p,k)=>[p,v[(k+1)%v.length]]));src='floor'}
+    if(!raw.length)return {err:'找不到牆的線條：請確認匯出的是「平面圖」DXF，不是 3D 模型或點雲'};
+    /* 單位：表頭 $INSUNITS 優先；沒有就看牆的範圍（一般房子 3～30 公尺：公尺 3～30、公分 300～3000、公釐 3000～30000） */
+    let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(const [a,b] of raw)for(const p of [a,b]){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<y0)y0=p[1];if(p[1]>y1)y1=p[1]}
+    const md=Math.max(x1-x0,y1-y0),uk={m:1000,cm:10,mm:1}[opt.unit];let k=uk||UNIT[D.units]||0,ua=opt.unit?'manual':D.units&&UNIT[D.units]?'header':'guess';
+    if(!k)k=md<=80?1000:md<=3000?10:1;const uname=k===1000?'公尺':k===10?'公分':k===1?'公釐':k===25.4?'英吋':'英尺';
+    /* 全部畫在同一層（沒有門窗圖層）時：半徑 40～180 公分、約 90° 的圓弧當門；從弧心拉出、長度≈半徑的線是門扇，不能當成牆 */
+    if(src==='other'){const arcs=R0.filter(e=>e.role==='other'&&e.T==='A'&&e.r*k>=400&&e.r*k<=1800&&Math.abs(swp(e)-90)<=30);
+      for(const a of arcs)a.role='door';raw=raw.filter(([p,q])=>!arcs.some(a=>{const L=Math.hypot(q[0]-p[0],q[1]-p[1]),near=pt=>Math.hypot(pt[0]-a.c[0],pt[1]-a.c[1])*k<=40;return (near(p)||near(q))&&Math.abs(L-a.r)<=a.r*0.15}))}
+    if(md*k<1000||md*k>300000)return {err:`用「${uname}」換算後是 ${(md*k/1000).toFixed(2)} 公尺，不像一間房子：請在下方改單位`};
+    if(md*k<1500||md*k>60000)warn.push(`換算後大小是 ${(md*k/1000).toFixed(1)} 公尺，看起來不太對：請在下方改單位`);
+    /* 主方向：牆長加權的角度直方圖（以 90° 為週期），找最多牆的方向再細算，整張圖轉正 */
+    const S=raw.map(([a,b])=>[[a[0]*k,-a[1]*k],[b[0]*k,-b[1]*k]]);if(S.length<2)return {err:'牆太少，轉不出平面：請確認 DXF 有完整的牆線'};
+    const hist=new Float64Array(90);for(const [a,b] of S){const L=Math.hypot(b[0]-a[0],b[1]-a[1]);if(L<200)continue;const d=((Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI)%90+90)%90;hist[Math.floor(d)%90]+=L}
+    let best=0,bv=-1;for(let b=0;b<90;b++){let v=0;for(let d=-2;d<=2;d++)v+=hist[(b+d+90)%90];if(v>bv){bv=v;best=b}}
+    let cs=0,sn=0;for(const [a,b] of S){const L=Math.hypot(b[0]-a[0],b[1]-a[1]);if(L<200)continue;const d=((Math.atan2(b[1]-a[1],b[0]-a[0])*180/Math.PI)%90+90)%90;let dd=d-(best+0.5);dd=((dd+45)%90+90)%90-45;if(Math.abs(dd)>4)continue;const q=d*4*Math.PI/180;cs+=L*Math.cos(q);sn+=L*Math.sin(q)}
+    let th=Math.atan2(sn,cs)*180/Math.PI/4;if(th<0)th+=90;if(th>45)th-=90;if(Math.abs(th)<0.3)th=0;
+    const cr=Math.cos(-th*Math.PI/180),sr=Math.sin(-th*Math.PI/180),RT=p=>[p[0]*cr-p[1]*sr,p[0]*sr+p[1]*cr],TR=p=>RT([p[0]*k,-p[1]*k]);
+    /* 只留水平／垂直（±4°）的線，貼齊座標軸；斜牆略過並回報 */
+    const H=[],V=[];let skew=0;for(const [a0,b0] of S){const a=RT(a0),b=RT(b0),dx=b[0]-a[0],dy=b[1]-a[1],L=Math.hypot(dx,dy);if(L<50)continue;const ang=Math.abs(Math.atan2(dy,dx)*180/Math.PI)%180;
+      if(ang<=4||ang>=176)H.push({c:(a[1]+b[1])/2,a0:Math.min(a[0],b[0]),a1:Math.max(a[0],b[0])});else if(Math.abs(ang-90)<=4)V.push({c:(a[0]+b[0])/2,a0:Math.min(a[1],b[1]),a1:Math.max(a[1],b[1])});else if(L>=300)skew++}
+    if(skew)warn.push(`有 ${skew} 條斜的牆線無法轉成直角，已略過（這裡的平面只支援水平／垂直牆）`);
+    /* 同一直線上重疊或相接的線段併成一段（矩形牆在門窗處被切開、或掃描斷斷續續） */
+    const merge=arr=>{let a=arr.slice();for(let pass=0;pass<4;pass++){a.sort((p,q)=>p.c-q.c||p.a0-q.a0);const o=[];let ch=false;
+        for(const s of a){const m=o.find(q=>Math.abs(q.c-s.c)<=15&&s.a0<=q.a1+15&&s.a1>=q.a0-15);if(m){const lm=m.a1-m.a0,ls=s.a1-s.a0;m.c=(m.c*lm+s.c*ls)/((lm+ls)||1);m.a0=Math.min(m.a0,s.a0);m.a1=Math.max(m.a1,s.a1);ch=true}else o.push({...s})}a=o;if(!ch)break}return a};
+    /* 牆端封口（矩形牆的兩端、門窗洞口的邊）：短、兩端都接著更長的垂直線、而且那兩條往同一邊走。
+       留著會被當成「最近的另一面」，配出 6 公分厚的假牆、真的那一面反而落單 */
+    const capOff=(A,B)=>{const idx=new Map(),K=(x,y)=>Math.round(x/5)+','+Math.round(y/5);
+      for(const q of B){const L=q.a1-q.a0;for(const [y,dir] of [[q.a0,1],[q.a1,-1]]){const k=K(q.c,y);let l=idx.get(k);if(!l)idx.set(k,l=[]);l.push({x:q.c,y,L,dir})}}
+      const at=(x,y,L)=>{const ds=new Set(),gx=Math.round(x/5),gy=Math.round(y/5);for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++)for(const e of idx.get((gx+i)+','+(gy+j))||[])if(Math.abs(e.x-x)<=3&&Math.abs(e.y-y)<=3&&e.L>=1.25*L)ds.add(e.dir);return ds};
+      return A.filter(s=>{const L=s.a1-s.a0;if(L>600)return true;const d0=at(s.a0,s.c,L),d1=at(s.a1,s.c,L);return !((d0.has(1)&&d1.has(1))||(d0.has(-1)&&d1.has(-1)))})};
+    /* 牆的兩個面（相距 4～50 公分、重疊 6 成以上）配成一道牆；落單的長線當牆中心線；太短的落單線丟掉 */
+    const pair=arr=>{const bands=[],used=new Uint8Array(arr.length),ord=arr.map((s,i)=>i).sort((p,q)=>(arr[q].a1-arr[q].a0)-(arr[p].a1-arr[p].a0));
+      for(const i of ord){if(used[i])continue;const s=arr[i];let bj=-1,bd=Infinity;
+        for(let j=0;j<arr.length;j++){if(j===i||used[j])continue;const q=arr[j],d=Math.abs(q.c-s.c);if(d<40||d>500||d>=bd)continue;const ov=Math.min(s.a1,q.a1)-Math.max(s.a0,q.a0);if(ov<0.6*Math.min(s.a1-s.a0,q.a1-q.a0))continue;bd=d;bj=j}
+        if(bj>=0){const q=arr[bj];used[i]=used[bj]=1;bands.push({c:(s.c+q.c)/2,t:bd,a0:Math.min(s.a0,q.a0),a1:Math.max(s.a1,q.a1),pair:1})}}
+      /* 落單的線若貼在已配好的牆上（T 字接頭把一面切成兩段時會多出一段），它是同一道牆的面，不是另一道牆 */
+      for(let i=0;i<arr.length;i++){const s=arr[i];if(used[i]||s.a1-s.a0<450||bands.some(b=>b.pair&&Math.abs(s.c-b.c)<=b.t/2+15&&Math.min(s.a1,b.a1)-Math.max(s.a0,b.a0)>=0.8*(s.a1-s.a0)))continue;
+        bands.push({c:s.c,t:DT,a0:s.a0,a1:s.a1,pair:0})}return bands};
+    const HB=pair(merge(capOff(H,V))),VB=pair(merge(capOff(V,H)));if(HB.length+VB.length<2)return {err:'牆太少，轉不出平面：請確認 DXF 有完整的牆線'};
+    let bx0,by0,bx1,by1;const bbox=()=>{bx0=by0=Infinity;bx1=by1=-Infinity;for(const b of HB){bx0=Math.min(bx0,b.a0);bx1=Math.max(bx1,b.a1);by0=Math.min(by0,b.c-b.t/2);by1=Math.max(by1,b.c+b.t/2)}
+      for(const b of VB){by0=Math.min(by0,b.a0);by1=Math.max(by1,b.a1);bx0=Math.min(bx0,b.c-b.t/2);bx1=Math.max(bx1,b.c+b.t/2)}};bbox();
+    const T=80,side=(b,hz)=>hz?(Math.abs(b.c-b.t/2-by0)<=T?'N':Math.abs(b.c+b.t/2-by1)<=T?'S':''):(Math.abs(b.c-b.t/2-bx0)<=T?'W':Math.abs(b.c+b.t/2-bx1)<=T?'E':'');
+    for(const b of HB)b.sd=side(b,1);for(const b of VB)b.sd=side(b,0);
+    /* 外框牆厚：畫了兩個面的照實際；只有一條線的（光達掃描多半如此）是掃到的「室內牆面」，牆厚往外加，室內尺寸才不會少掉半道牆 */
+    const fr=[...HB,...VB].filter(b=>b.sd),tp=fr.filter(b=>b.pair).map(b=>b.t).sort((a,c)=>a-c),e0=+opt.ext>=80&&+opt.ext<=600?+opt.ext:200;
+    const ext=Math.round(Math.min(600,Math.max(80,tp.length?tp[tp.length>>1]:e0)));let ext1=0;
+    for(const b of fr)if(!b.pair){b.c+=(b.sd==='N'||b.sd==='W'?-1:1)*ext/2;b.t=ext;ext1++}if(ext1)bbox();
+    const FW=Math.round(bx1-bx0),FD=Math.round(by1-by0);if(FW<1000||FD<1000)return {err:`換算後只有 ${(FW/1000).toFixed(1)}×${(FD/1000).toFixed(1)} 公尺：單位可能不對，請在下方改單位`};
+    const X=v=>v-bx0,Y=v=>v-by0;
+    /* 牆線：同方向、同中心線（±25mm）的牆段排成一條線，中間的缺口之後放門窗或保留為通道 */
+    const lines=[];for(const [arr,hz] of [[HB,1],[VB,0]]){const nf=arr.filter(b=>!b.sd).sort((p,q)=>p.c-q.c||p.a0-q.a0);
+      for(const b of nf){const L=lines.find(l=>l.hz===hz&&!l.sd&&Math.abs(l.c-b.c)<=40);if(L)L.bs.push(b);else lines.push({hz,c:b.c,bs:[b],sd:''})}
+      for(const sd of hz?['N','S']:['W','E']){const bs=arr.filter(b=>b.sd===sd);if(bs.length)lines.push({hz,sd,c:sd==='N'?by0+ext/2:sd==='S'?by1-ext/2:sd==='W'?bx0+ext/2:bx1-ext/2,bs})}}
+    for(const l of lines){l.bs.sort((p,q)=>p.a0-q.a0);l.t=l.sd?ext:l.bs.map(b=>b.t).sort((a,c)=>a-c)[l.bs.length>>1];l.one=l.bs.every(b=>!b.pair);l.gaps=[];
+      let g0=-Infinity;for(let q=0;q+1<l.bs.length;q++){g0=Math.max(g0,l.bs[q].a1);const g1=l.bs[q+1].a0;if(g1-g0>60)l.gaps.push({a0:g0,a1:g1,op:null})}l.L0=l.bs[0].a0;l.L1=Math.max(g0,l.bs[l.bs.length-1].a1)}
+    /* 門窗：門／窗圖層的圖元依外框互相靠近分組，每組找它跨過的牆線，優先放進那條線的缺口。
+       門弧常被寫成很多小直線（本 App 匯出的 DXF、部分掃描 App）：首尾相接、一路往同一邊慢慢轉的一段認成弧，才分得出平開門和推拉門 */
+    /* 外框用迴圈算：Math.min(...陣列) 在 Safari 超過約 6.5 萬個點會直接丟錯 */
+    const items=[],box=(r,P,arc)=>{let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;for(const p of P){if(p[0]<x0)x0=p[0];if(p[0]>x1)x1=p[0];if(p[1]<y0)y0=p[1];if(p[1]>y1)y1=p[1]}items.push({r,arc,b:[x0,y0,x1,y1]})};
+    const turn=(a,b,c)=>{let d=Math.atan2(c[1]-b[1],c[0]-b[0])-Math.atan2(b[1]-a[1],b[0]-a[0]);while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;return d};
+    const chainOut=(r,P)=>{let i0=0;const out=i1=>{const Q=P.slice(i0,i1+1);if(Q.length<2)return;let tot=0,sg=0,ok=r==='door'&&Q.length>=4;
+        for(let j=1;ok&&j+1<Q.length;j++){const d=turn(Q[j-1],Q[j],Q[j+1]),g=Math.sign(d);if(Math.abs(d)<1e-3||(sg&&g!==sg))ok=false;sg=g;tot+=d}
+        if(ok&&Math.abs(tot)>=0.6&&Math.abs(tot)<=3.6)box(r,Q,1);else for(let j=0;j+1<Q.length;j++)box(r,[Q[j],Q[j+1]],0)};
+      /* 急轉彎（>35°，例如弧接到門扇）處切開，各段分開判斷 */
+      for(let j=1;j+1<P.length;j++)if(Math.abs(turn(P[j-1],P[j],P[j+1]))>0.6){out(j);i0=j}out(P.length-1)};
+    const dl=[];for(const e of R0){if(e.role!=='door'&&e.role!=='window')continue;
+      if(e.T==='L')dl.push({r:e.role,a:TR(e.a),b:TR(e.b)});
+      else if(e.T==='P'){const v=e.v.map(TR);if(e.cl&&v.length>2)v.push(v[0]);chainOut(e.role,v)}
+      else if(e.T==='A'){const sw=swp(e),a0=e.a0*Math.PI/180,P=[e.c,...[0,sw,sw/2].map(t=>[e.c[0]+e.r*Math.cos(a0+t*Math.PI/180),e.c[1]+e.r*Math.sin(a0+t*Math.PI/180)])];box(e.role,P.map(TR),sw<200?1:0)}}
+    {const K=p=>Math.round(p[0])+','+Math.round(p[1]),adj=new Map(),seen=new Uint8Array(dl.length);
+      dl.forEach((q,i)=>{for(const p of [q.a,q.b]){const k=K(p);let l=adj.get(k);if(!l)adj.set(k,l=[]);l.push(i)}});
+      for(let i=0;i<dl.length;i++){if(seen[i])continue;seen[i]=1;const q=dl[i],fw=[q.b],bw=[q.a];
+        for(const arr of [fw,bw]){let cur=i;for(let n=0;n<5000;n++){const key=K(arr[arr.length-1]),l=adj.get(key);if(!l||l.length!==2)break;const nx=l[0]===cur?l[1]:l[0];if(seen[nx]||dl[nx].r!==q.r)break;seen[nx]=1;arr.push(K(dl[nx].a)===key?dl[nx].b:dl[nx].a);cur=nx}}
+        chainOut(q.r,[...bw.reverse(),...fw])}}
+    /* 分組：同用途、外框相距 12 公分內的併成一組；一直併到不再變動（只掃一遍的話，順序不同會拆成兩組＝一樘門變兩樘） */
+    const grp=[],near=(g,b)=>b[0]<=g.b[2]+120&&b[2]>=g.b[0]-120&&b[1]<=g.b[3]+120&&b[3]>=g.b[1]-120,join=(g,b,n)=>{g.b=[Math.min(g.b[0],b[0]),Math.min(g.b[1],b[1]),Math.max(g.b[2],b[2]),Math.max(g.b[3],b[3])];g.arcs+=n};
+    for(const it of items){const m=grp.find(g=>g.r===it.r&&near(g,it.b));if(m)join(m,it.b,it.arc);else grp.push({r:it.r,b:it.b.slice(),arcs:it.arc})}
+    for(let ch=true;ch;){ch=false;for(let i=0;i<grp.length;i++)for(let j=grp.length-1;j>i;j--){const g=grp[i],h=grp[j];if(g.r!==h.r||!near(g,h.b))continue;join(g,h.b,h.arcs);grp.splice(j,1);ch=true}}
+    let lost=0;const ops=[];
+    for(const g of grp){let bl=null,bs=0;
+      for(const l of lines){const lo=l.hz?g.b[1]:g.b[0],hi=l.hz?g.b[3]:g.b[2],a0=l.hz?g.b[0]:g.b[1],a1=l.hz?g.b[2]:g.b[3],half=Math.max(l.t/2,150);
+        if(hi<l.c-half||lo>l.c+half)continue;const ov=Math.min(a1,l.L1)-Math.max(a0,l.L0);if(ov<=0)continue;
+        const sc=ov-Math.abs((lo+hi)/2-l.c)*0.2;if(sc>bs){bs=sc;bl=l}}
+      if(!bl){lost++;continue}const l=bl,a0=l.hz?g.b[0]:g.b[1],a1=l.hz?g.b[2]:g.b[3],mid=(a0+a1)/2,perp=l.hz?(g.b[1]+g.b[3])/2:(g.b[0]+g.b[2])/2;
+      const gap=l.gaps.filter(q=>!q.op&&Math.min(a1,q.a1)-Math.max(a0,q.a0)>0.4*(q.a1-q.a0)).sort((p,q)=>Math.abs((p.a0+p.a1)/2-mid)-Math.abs((q.a0+q.a1)/2-mid))[0];
+      /* 沒對到牆的缺口、又比一般門窗小（門 40、窗 25 公分）：多半是編號、箭頭之類的標記，不當門窗 */
+      if(!gap&&a1-a0<(g.r==='window'?250:400))continue;
+      const r0=gap?gap.a0:a0,r1=gap?gap.a1:a1,w=Math.min(6000,Math.max(300,r1-r0));
+      const k2=g.r==='window'?'win':g.arcs>=2?'door2':g.arcs===1?'door':'sdoor',o={l,k:k2,c:(r0+r1)/2,w,perp};if(gap)gap.op=o;ops.push(o)}
+    if(lost)warn.push(`有 ${lost} 組門窗找不到所在的牆，已略過`);
+    /* 內牆：同一條線上，缺口有門窗（或小於 6 公分）的牆段接成同一道牆；沒有門窗的缺口保留成通道 */
+    const walls=[];for(const l of lines){if(l.sd)continue;let cur=null;
+      for(const b of l.bs){if(cur&&(b.a0-cur.a1<=60||l.gaps.some(q=>q.op&&q.a0>=cur.a1-1&&q.a1<=b.a0+1)))cur.a1=Math.max(cur.a1,b.a1);else{cur={l,a0:b.a0,a1:b.a1};walls.push(cur)}}}
+    /* 端點接合：掃描出的牆常停在隔壁牆的牆面（差半個牆厚），房間偵測用中心線，不接起來房間會漏成一間 */
+    const perpOf=w=>[...walls.filter(q=>q.l.hz!==w.l.hz).map(q=>({c:q.l.c,t:q.l.t,a0:q.a0,a1:q.a1})),...lines.filter(q=>q.sd&&q.hz!==w.l.hz).map(q=>({c:q.c,t:ext,a0:-1e9,a1:1e9})),
+      ...(w.l.hz?[{c:bx0+ext/2,t:ext,a0:-1e9,a1:1e9},{c:bx1-ext/2,t:ext,a0:-1e9,a1:1e9}]:[{c:by0+ext/2,t:ext,a0:-1e9,a1:1e9},{c:by1-ext/2,t:ext,a0:-1e9,a1:1e9}])];
+    const snap=(P,c,t,end,dir)=>{let best=null;for(const q of P){if(c<q.a0-80||c>q.a1+80)continue;const d=(q.c-end)*dir;if(d<-30||d>q.t/2+t/2+150)continue;if(!best||Math.abs(d)<Math.abs(best.d))best={d,c:q.c}}return best};
+    for(const w of walls){const P=perpOf(w),e1=snap(P,w.l.c,w.l.t,w.a1,1),e0=snap(P,w.l.c,w.l.t,w.a0,-1);if(e1)w.a1=e1.c;if(e0)w.a0=e0.c}
+    const plan={FW,FD,ext,int:DT,RH:+opt.RH||2800,walls:[],openings:[],labels:[],objs:[],paint:{},wallH:{},lockExt:true};
+    const cx=v=>Math.round(Math.min(FW-ext/2,Math.max(ext/2,v))),cy=v=>Math.round(Math.min(FD-ext/2,Math.max(ext/2,v)));
+    const one=new Set();for(const w of walls){if(w.a1-w.a0<300)continue;const nw=w.l.hz?{x1:cx(X(w.a0)),y1:cy(Y(w.l.c)),x2:cx(X(w.a1)),y2:cy(Y(w.l.c))}:{x1:cx(X(w.l.c)),y1:cy(Y(w.a0)),x2:cx(X(w.l.c)),y2:cy(Y(w.a1))};
+      if(Math.abs(nw.x2-nw.x1)+Math.abs(nw.y2-nw.y1)<300)continue;const o={id:oid(),...nw,t:Math.round(Math.min(600,Math.max(50,w.l.t)))};plan.walls.push(o);w.id=o.id;if(w.l.one)one.add(o.id)}
+    for(const o of ops){let id=o.l.sd;if(!id){const w=walls.find(q=>q.l===o.l&&q.id&&o.c>=q.a0-5&&o.c<=q.a1+5);if(!w)continue;id=w.id}
+      const W=FLOOR.wallById(plan,id);if(!W)continue;const Lw=FLOOR.wlen(W)||1,ux=(W.x2-W.x1)/Lw,uy=(W.y2-W.y1)/Lw,px=o.l.hz?X(o.c):X(o.l.c),py=o.l.hz?Y(o.l.c):Y(o.c),s=(px-W.x1)*ux+(py-W.y1)*uy;
+      const D=FLOOR.OPK[o.k],door=FLOOR.isDoor(o.k),sgn=Math.sign(o.perp-o.l.c)||1,side=o.l.hz?sgn:-sgn;
+      plan.openings.push({id:oid(),k:o.k,wall:id,s:Math.round(s),w:Math.round(o.w),h:D.h,sill:door?0:D.sill,side,flip:false})}
+    /* 大門：外框上最寬的門 */
+    const ed=plan.openings.filter(o=>FLOOR.isDoor(o.k)&&FLOOR.EXT.includes(o.wall)).sort((a,c)=>c.w-a.w)[0];if(ed)ed.entry=true;
+    /* 分區線（BNDY 圖層，例如客廳和玄關的分界）：不蓋牆、但會分房間；端點接到附近的牆中心線 */
+    for(const e of R0){if(e.role!=='virt')continue;const sg=e.T==='L'?[[e.a,e.b]]:e.T==='P'?e.v.slice(1).map((p,i)=>[e.v[i],p]):[];
+      for(const [p0,p1] of sg){const a=TR(p0),b=TR(p1),dx=Math.abs(b[0]-a[0]),dy=Math.abs(b[1]-a[1]),hz=dy<=dx*0.07;if(!hz&&dx>dy*0.07)continue;
+        const c=hz?(a[1]+b[1])/2:(a[0]+b[0])/2;let u0=hz?Math.min(a[0],b[0]):Math.min(a[1],b[1]),u1=hz?Math.max(a[0],b[0]):Math.max(a[1],b[1]);if(u1-u0<300)continue;
+        const P=perpOf({l:{hz}}),e1=snap(P,c,0,u1,1),e2=snap(P,c,0,u0,-1);if(e1)u1=e1.c;if(e2)u0=e2.c;
+        plan.walls.push({id:oid(),...(hz?{x1:cx(X(u0)),y1:cy(Y(c)),x2:cx(X(u1)),y2:cy(Y(c))}:{x1:cx(X(c)),y1:cy(Y(u0)),x2:cx(X(c)),y2:cy(Y(u1))}),virt:true})}}
+    /* 房間與非室內：有地板外框就看房間中心在不在地板裡；沒有就看貼著外框的那幾邊，掃描到的外牆不到三成＝外面 */
+    const R=FLOOR.rooms(plan),fl=floors0.map(v=>v.map(p=>{const q=TR(p);return [X(q[0]),Y(q[1])]}));
+    const cover=(reg,sd)=>{const {xs,ys,nx,ny}=R.G;let adj=0,cov=0;const bs=lines.filter(l=>l.sd===sd).flatMap(l=>l.bs);
+      const cells=sd==='N'||sd==='S'?[...Array(nx).keys()].map(i=>({i,j:sd==='N'?0:ny-1})):[...Array(ny).keys()].map(j=>({i:sd==='W'?0:nx-1,j}));
+      for(const {i,j} of cells){if(R.at((xs[i]+xs[i+1])/2,(ys[j]+ys[j+1])/2)!==reg.i)continue;const a=sd==='N'||sd==='S'?[xs[i],xs[i+1]]:[ys[j],ys[j+1]],off=sd==='N'||sd==='S'?bx0:by0;
+        adj+=a[1]-a[0];for(const b of bs)cov+=Math.max(0,Math.min(a[1],b.a1-off)-Math.max(a[0],b.a0-off))}return [adj,cov]};
+    const isOut=reg=>{if(fl.length)return !fl.some(pg=>pip(reg.pt,pg));let adj=0,cov=0;for(const sd of ['N','S','W','E']){const [a,c]=cover(reg,sd);adj+=a;cov+=c}return adj>=500&&cov<0.3*adj};
+    const texts=R0.filter(e=>e.T==='X'&&!TXSKIP.test(e.L)).map(e=>{const q=TR(e.p);return {x:X(q[0]),y:Y(q[1]),s:nameOf(e.s),h:e.h}}).filter(t=>!noName(t.s));
+    let nn=0,nroom=0,nvoid=0;const big=R.regs.filter(r=>r.area>=0.8e6);
+    for(const reg of big){if(isOut(reg)){plan.labels.push({id:oid(),name:'非室內',type:'void',x:Math.round(reg.pt[0]),y:Math.round(reg.pt[1])});nvoid++;continue}
+      /* 一區可能有好幾個房名（開放式客餐廳）：留字高接近最大的那幾個，小很多的多半是備註 */
+      const ts2=texts.filter(t=>R.at(t.x,t.y)===reg.i).sort((a,c)=>c.h-a.h),hm=ts2.length?ts2[0].h:0,got=new Set();nroom++;
+      for(const t of ts2){if(t.h<0.75*hm||got.has(t.s)||got.size>=4)continue;got.add(t.s);plan.labels.push({id:oid(),name:t.s,type:typeOf(t.s),x:Math.round(t.x),y:Math.round(t.y)})}
+      if(!got.size)plan.labels.push({id:oid(),name:big.length===1?(String(opt.name||'').slice(0,12)||'室內'):`空間 ${++nn}`,type:'other',x:Math.round(reg.pt[0]),y:Math.round(reg.pt[1])})}
+    /* 斜線、剖面圖、立面圖轉正後常變成幾條不相干的線，圍不出室內：與其交出一張全是「非室內」的空圖，不如直接說清楚 */
+    if(!nroom)return {err:'牆線沒有圍成房間：請確認匯出的是「平面圖」DXF（不是立面、剖面或 3D），或換個單位試試'};
+    /* 貼著非室內的內牆其實是外牆（凹口）：用外牆畫法。單線的凹口牆跟外框一樣是室內牆面，牆厚往非室內那側加；兩道凹口牆的轉角跟著移 */
+    const isV=(x,y)=>{const r=R.at(x,y);return r>=0&&plan.labels.some(l=>l.type==='void'&&R.at(l.x,l.y)===r)},sh=[];
+    for(const w of plan.walls){if(w.virt)continue;const hz=Math.abs(w.y2-w.y1)<1,mx=(w.x1+w.x2)/2,my=(w.y1+w.y2)/2,d=w.t/2+60;
+      const vs=(hz?[[mx,my-d,-1],[mx,my+d,1]]:[[mx-d,my,-1],[mx+d,my,1]]).filter(([x,y])=>isV(x,y));if(!vs.length)continue;w.outer=true;
+      if(one.has(w.id)&&vs.length===1){const o=vs[0][2]*ext/2,old=hz?w.y1:w.x1;if(hz){w.y1=w.y2=Math.round(old+o)}else{w.x1=w.x2=Math.round(old+o)}w.t=ext;sh.push({w,hz,old,neu:Math.round(old+o)})}}
+    for(const a of sh)for(const b of sh){if(a.hz===b.hz)continue;for(const k of a.hz?['x1','x2']:['y1','y2'])if(Math.abs(a.w[k]-b.old)<=5)a.w[k]=b.neu}
+    return {plan,warn,info:{unit:uname,ua,rot:Math.round(th*10)/10,walls:plan.walls.length,frame:fr.length,ops:plan.openings.length,rooms:nroom,voids:nvoid,src,ext1,skip:D.skip||{}}}}
+  return {parse,parser,toPlan,roleOf,typeOf}})();
 /*@@PURE-END*/
 
 
@@ -2461,15 +2690,61 @@ function svPreview(sv,S){const n=sv.walls.length;let P,ok=S.ok;
 function svStat(S){if(!S.ok)return `<p class="warn" style="margin:0">⚠ ${esc(S.err)}</p>`;
   return `<p class="note" style="margin:0;color:#C8D6E5">✓ 形狀接起來了：外框 ${fmtLen(S.W)} × ${fmtLen(S.D)} ${unit}・淨面積約 ${(S.area/1e6/3.3058).toFixed(1)} 坪（${(S.area/1e6).toFixed(1)} m²，牆內緣計）${S.autoLen?`・最後一面自動算 ${fmtLen(S.autoLen)} ${unit}`:''}</p>${S.warn.map(w=>`<p class="note" style="margin:4px 0 0;color:#F5C518">※ ${esc(w)}</p>`).join('')}`}
 function svRefresh(it){const sv=svOf(it),S=FLOOR.survey(sv),a=$('#svprev'),b=$('#svstat');if(a)a.innerHTML=svPreview(sv,S);if(b)b.innerHTML=svStat(S)}
+/* 匯入光達掃描 App 的 DXF：解析結果先放在 view（換單位重算不必重讀檔案），按「用這個建立」才寫進專案 */
+const DXF_MAX=200*1048576;
+async function dxfRead(f){
+  /* 舊瀏覽器沒有 Blob.stream：只好整檔讀，限制 30 MB 免得 iPhone 記憶體不夠 */
+  if(typeof f.stream!=='function'){if(f.size>30*1048576)return {err:'這個瀏覽器只能讀 30 MB 以下的 DXF：請更新 iOS，或在掃描 App 匯出 2D 平面圖'};return CADIN.parse(await f.text())}
+  const P=CADIN.parser(),rd=f.stream().getReader();let dec=null;
+  try{for(;;){const {value,done}=await rd.read();if(done)break;
+      if(!dec){/* R2004 以前的 DXF，中文用 Big5／GBK 等系統編碼（表頭 $DWGCODEPAGE）；R2007 起一律 UTF-8。照 UTF-8 硬解，房名會變亂碼 */
+        const h=new TextDecoder('windows-1252').decode(value.subarray(0,16384)),cp=((h.match(/\$DWGCODEPAGE\s*\r?\n\s*3\s*\r?\n\s*(\S+)/)||[])[1]||'').toUpperCase(),ver=+((h.match(/\$ACADVER\s*\r?\n\s*1\s*\r?\n\s*AC(\d+)/)||[])[1]||0);
+        const m={ANSI_950:'big5',ANSI_936:'gbk',ANSI_932:'shift_jis',ANSI_949:'euc-kr'}[cp];let d=null;if(m&&(!ver||ver<1021))try{d=new TextDecoder(m)}catch(e){}dec=d||new TextDecoder('utf-8')}
+      P.feed(dec.decode(value,{stream:true}));if(P.stop())break}
+  }finally{rd.cancel().catch(()=>{})}
+  if(dec&&!P.stop())P.feed(dec.decode());return P.end()}
+/* 轉換出錯要顯示在結果區，不能變成沒人接的例外（畫面會停在「讀取中」） */
+function dxfConv(X){try{return CADIN.toPlan(X.D,{unit:X.unit||undefined,ext:X.ext})}catch(e){return {err:`轉換失敗（${String(e&&e.message||e).slice(0,80)}）：這個 DXF 的寫法還沒支援，請保留檔案回報`}}}
+async function dxfPick(f){const it=curItem();if(!f||!it||it.type!=='floor')return;
+  if(f.size>DXF_MAX)return toast(`檔案 ${Math.round(f.size/1048576)} MB 太大：請在掃描 App 匯出「2D 平面圖」的 DXF（通常不到 5 MB），不要匯出 3D 模型`);
+  if(!f.size)return toast('這個檔案是空的：請在掃描 App 重新匯出 DXF');
+  toast('讀取 DXF 中…');let D;try{D=await dxfRead(f)}catch(err){D={err:`讀不到這個檔案（${String(err&&err.message||err).slice(0,80)}）：請在掃描 App 重新匯出 DXF，存到「檔案」後再選一次`}}
+  if(curItem()!==it)return;const X={id:it.id,name:String(f.name||'DXF').slice(0,60),D:D.err?null:D,unit:'',ext:+it.p.ext||200};X.r=D.err?D:dxfConv(X);view.dxfin=X;secOpen.dxfin=true;
+  const at=scrollY;render();scrollTo(0,at);toast(view.dxfin.r.err?'讀不出平面：請看下方說明':'讀好了：確認預覽沒問題，再按「用這個建立平面圖」')}
+const DXF_UA={header:'檔案標示',guess:'依尺寸判斷',manual:'手動指定'};
+function dxfResult(it){const X=view.dxfin;if(!X||X.id!==it.id)return '';const r=X.r,I=r.info||{};
+  const us=X.D?`<label class="dx-u">單位 <select data-dxu="1">${[['','自動判斷'],['m','公尺'],['cm','公分'],['mm','公釐']].map(([v,l])=>`<option value="${v}" ${X.unit===v?'selected':''}>${l}</option>`).join('')}</select></label>`:'';
+  const head=`<div class="dx-h"><b>📄 ${esc(X.name)}</b><button class="sv-x" data-act="dxfClear" aria-label="關閉匯入結果">✕</button></div>`;
+  if(r.err)return `<div class="dx">${head}<p class="warn" style="margin:0">⚠ ${esc(r.err)}</p>${us}</div>`;
+  const P=r.plan,S=FLOOR.summary(P),sk=Object.entries(I.skip||{}).sort((a,b)=>b[1]-a[1]).slice(0,4),nv=P.walls.filter(w=>w.virt).length;
+  return `<div class="dx">${head}
+    <div class="fp-thumb">${toSVG(bFloor({p:P},{th:'dark',dims:false,grid:false,hatch:false}),0,0,TH_DARK)}</div>
+    <p class="note" style="margin:0;color:#C8D6E5">✓ 外框 ${fmtLen(P.FW)} × ${fmtLen(P.FD)} ${unit}・約 ${(S.tot/3.3058).toFixed(1)} 坪・空間 ${S.list.length}${P.walls.length-nv?`・內牆 ${P.walls.length-nv} 道`:''}${nv?`・分區線 ${nv}`:''}・門窗 ${P.openings.length} 樘${I.voids?`・非室內 ${I.voids} 塊`:''}</p>
+    <div class="fp-rooms">${S.list.map(x=>`<span>${esc(x.name)} ${(x.m2/3.3058).toFixed(1)}</span>`).join('')}</div>
+    <p class="note" style="margin:0;color:#9FB3C8">單位：${esc(I.unit)}（${DXF_UA[I.ua]||''}）${I.rot?`・圖轉正 ${I.rot}°`:''}・牆線來源：${I.src==='wall'?'牆圖層':I.src==='floor'?'地板外框':'未分圖層的線'}${sk.length?`・略過 ${sk.map(([k,v])=>`${esc(k)} ${v}`).join('、')}`:''}</p>
+    ${r.warn.map(w=>`<p class="note" style="margin:0;color:#F5C518">※ ${esc(w)}</p>`).join('')}
+    ${us}${I.ext1?`<label class="dx-u">外牆厚 <input data-dxe="1" inputmode="decimal" value="${fmtLen(X.ext)}" autocomplete="off" style="max-width:110px"> ${unit}</label>
+    <p class="note" style="margin:0;color:#9FB3C8">這個 DXF 的外牆只有一條線：當成掃到的室內牆面，牆厚往外加，室內尺寸不變。</p>`:''}
+    <button class="fp-go" data-act="dxfUse">✅ 用這個建立平面圖（之後可再修改）</button></div>`}
+function dxfBox(it){const has=!!(view.dxfin&&view.dxfin.id===it.id);
+  return `<details class="sv-help" data-sec="dxfin"${isOpen('dxfin',has)?' open':''}><summary>📥 有光達 iPhone？匯入掃描 App 的 DXF</summary>
+    <ol><li>用有光達的 iPhone／iPad Pro，在能匯出 DXF 平面圖的掃描 App 裡繞房間掃一圈。</li>
+      <li>匯出選「DXF」（2D 平面圖），存到「檔案」App。</li>
+      <li>回到這裡按下方按鈕選那個檔案，確認預覽沒問題再建立。</li></ol>
+    <label class="b" for="dxfIn" style="cursor:pointer;display:block;text-align:center">📂 選擇 DXF 檔</label>
+    <input type="file" id="dxfIn" class="vh">
+    ${dxfResult(it)}
+    <p class="note" style="color:#9FB3C8">門窗與房名是依 DXF 的圖層名稱與文字判斷；斜牆會略過（這裡只支援水平／垂直牆）。平面圖看不出窗台高，落地窗會先當一般窗。沒抓到或判斷錯的，建立後在 2D 平面上改。</p></details>`}
 function floorStep0(p,it){const sv=svOf(it),S=FLOOR.survey(sv),fresh=sv.walls.every(w=>!(+w.len>0));
   return `<div class="fp"><div class="sv">
+    ${dxfBox(it)}
     <details class="sv-help" data-sec="svhelp"${isOpen('svhelp',fresh)?' open':''}><summary>怎麼量？（看一次就會）</summary>
       <ol><li>站在屋內，從<b>大門那面牆</b>開始：面對牆，量<b>左邊牆角到右邊牆角</b>（雷射測距儀或捲尺）。</li>
         <li>走到右邊牆角，轉身面對下一面牆繼續量；一路<b>往右</b>繞一圈回到起點。</li>
         <li>每到一個牆角就選：<b>一般牆角</b>（房間的角）或<b>凸出牆角</b>（柱子、凹進去的地方）。開啟「🧭 轉角自動偵測」後，手機背面貼著每一面牆按一下，系統會自己判斷。</li>
         <li>這面牆上有門窗就順手填：距起點牆角多遠、寬、高、窗台高——之後可一鍵建成鋁窗丈量項目。</li>
         <li>最後一面牆可以不量，系統自動算；幾公分內的量測誤差會依長度比例平均分掉。</li></ol>
-      <p class="note" style="color:#9FB3C8">網頁 App 讀不到 iPhone 的光達（LiDAR），所以用「繞一圈量長度＋判斷轉角」代替掃描；量完一樣自動出 2D 平面、3D、PNG 提案圖、DXF、DAE。適合空屋、毛胚屋、店面辦公室或單一房間；已隔間的房子可以一間一間建。</p></details>
+      <p class="note" style="color:#9FB3C8">網頁 App 讀不到 iPhone 的光達（LiDAR），所以用「繞一圈量長度＋判斷轉角」代替掃描（有光達 iPhone 的話，也可以用掃描 App 掃完，從上面匯入 DXF）；量完一樣自動出 2D 平面、3D、PNG 提案圖、DXF、DAE。適合空屋、毛胚屋、店面辦公室或單一房間；已隔間的房子可以一間一間建。</p></details>
     <div class="sv-top"><label>空間名稱 <input data-svk="name" value="${esc(sv.name||'')}" placeholder="例：客廳、3F 辦公室" autocomplete="off" style="width:150px"></label>
       <label>第一面牆畫在 <select data-svk="first">${SVFIRST.map(([v,l])=>`<option value="${v}" ${(sv.first||'S')===v?'selected':''}>${l}</option>`).join('')}</select></label>
       <label>外牆厚 <input data-svk="ext" inputmode="decimal" value="${fmtLen(p.ext)}" autocomplete="off"> ${unit}</label></div>
@@ -2868,6 +3143,9 @@ function onField(e){const t=e.target;
     if(t.id==='logoIn'){setLogo(t.files&&t.files[0]);t.value='';return}
     if(t.id==='importIn'){importBackup(t.files&&t.files[0]);t.value='';return}
     if(t.id==='renderIn'){addRenders(Array.from(t.files||[]));t.value='';return}
+    if(t.id==='dxfIn'){const f=t.files&&t.files[0];t.value='';dxfPick(f);return}
+    if(t.dataset.dxu||t.dataset.dxe){const X=view.dxfin;if(!X||!X.D)return;if(t.dataset.dxu)X.unit=t.value;else{const v=parseLen(t.value);if(v==null||v<80||v>600)return toast('外牆厚請填 8～60 公分');X.ext=v}
+      X.r=dxfConv(X);const at=scrollY;render();scrollTo(0,at);return}
   }
   if(t.id==='q'){query=t.value;$('#plist').innerHTML=cardsHTML();return}
   if(t.id==='catQ'||t.id==='catC'){if(t.id==='catQ')catQ=t.value;else catC=t.value;const l=$('#clist');if(l)l.innerHTML=catalogHTML();return}
@@ -2954,7 +3232,7 @@ app.addEventListener('click',async e=>{
     case 'openProject':return go('project',b.dataset.id);
     case 'toProject':return go('project',view.pid);
     case 'addItem':{const ni=newItem(b.dataset.t);if(ni.type==='room'){const r=ROOM.make('blank');ni.p.RW=r.W;ni.p.RD=r.D;ni.p.objs=r.objs}p.items.push(ni);save();go('item',p.id,ni.id);
-      if(ni.type==='floor'){view.fstep=2;render();toast('挑一個格局方案；在現場的話可到「現場丈量」繞一圈量外框')}return}
+      if(ni.type==='floor'){view.fstep=2;render();toast('挑一個格局方案；在現場可到「現場丈量」繞一圈量外框，或匯入光達掃描的 DXF')}return}
     case 'projTpl':{const sel=$('#projTpl'),tp=ROOM.PROJ.find(x=>x.id===(sel&&sel.value));if(!tp)return toast('先選一個整案範本');
       for(const [ty,loc,pp] of tp.items){const ni=newItem(ty);ni.loc=loc;
         if(ty==='room'){const r=ROOM.make(pp.tpl);ni.p.RW=r.W;ni.p.RD=r.D;ni.p.objs=r.objs;ni.p.tpl=r.tpl}else Object.assign(ni.p,pp);p.items.push(ni)}
@@ -2988,6 +3266,12 @@ app.addEventListener('click',async e=>{
       fUndoPush(it);const P=r.plan;Object.assign(p0,{FW:P.FW,FD:P.FD,ext:P.ext,walls:P.walls,openings:P.openings,labels:P.labels,objs:[],paint:{},wallH:{}});
       if(!it.loc)it.loc=String(sv.name||'').slice(0,20)||'現場丈量';gyroOff();view.fstep=1;view.fsel=null;view.fvb=null;view.ftool='sel';save();render();scrollTo(0,0);
       return toast(`已建立：${sv.walls.length} 面牆、門窗 ${P.openings.length} 樘${r.voids?`、${r.voids} 塊非室內凹口`:''}${r.warn.length?`（${r.warn[0]}）`:''}`)}
+    case 'dxfUse':{const X=view.dxfin,r=X&&X.id===it.id?X.r:null;if(!r||!r.plan)return;const p0=it.p;
+      if(((p0.walls||[]).length||(p0.objs||[]).length||(p0.openings||[]).length)&&!await ask('匯入會取代目前的牆、門窗、房名與家具（可用「復原」救回），確定嗎？','匯入'))return;
+      fUndoPush(it);const P=JSON.parse(JSON.stringify(r.plan));Object.assign(p0,{FW:P.FW,FD:P.FD,ext:P.ext,walls:P.walls,openings:P.openings,labels:P.labels,objs:[],paint:{},wallH:{}});
+      if(!it.loc)it.loc='光達掃描';view.dxfin=null;gyroOff();view.fstep=1;view.fsel=null;view.fvb=null;view.ftool='sel';save();render();scrollTo(0,0);
+      return toast(`已匯入：空間 ${FLOOR.summary(p0).list.length} 個、門窗 ${P.openings.length} 樘${r.info.voids?`、非室內 ${r.info.voids} 塊`:''}，可以開始修改`)}
+    case 'dxfClear':{view.dxfin=null;const at=scrollY;render();return scrollTo(0,at)}
     case 'fFull':view.ffull=!view.ffull;render();if(!view.ffull){const c=$('#fcan');if(c)c.scrollIntoView({block:'center'})}return;
     case 'fTool':view.ftool=b.dataset.v;if(view.ftool!=='sel')view.fsel=null;return render();
     case 'fAct':return floorAct(b.dataset.v);

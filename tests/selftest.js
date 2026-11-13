@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-/* 丈量大師 離線自我測試：從 index.html 抽出 @@PURE 區塊（家具庫、範本、構想解析、用電估算、整層平面、DAE 寫出）單獨驗證。
+/* 丈量大師 離線自我測試：從 index.html 抽出 @@PURE 區塊（家具庫、範本、構想解析、用電估算、整層平面、DAE 寫出、DXF 匯入）單獨驗證。
  * 用法：node tests/selftest.js　（不需網路、不需安裝套件） */
 'use strict';
 const fs=require('fs'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 const m=html.match(/\/\*@@PURE-START[\s\S]*?\*\/([\s\S]*?)\/\*@@PURE-END\*\//);
 if(!m){console.error('✗ 找不到 @@PURE 區塊');process.exit(1)}
-const {ROOM:R,RENDER:RD,FLOOR:FL,DAE}=new Function(m[1]+'\nreturn {ROOM,RENDER,FLOOR,DAE};')();
+const {ROOM:R,RENDER:RD,FLOOR:FL,DAE,CADIN}=new Function(m[1]+'\nreturn {ROOM,RENDER,FLOOR,DAE,CADIN};')();
 let fail=0,pass=0;
 const ok=(c,msg)=>{if(c)pass++;else{fail++;console.error('✗ '+msg)}};
 const near=(a,b,t)=>Math.abs(a-b)<=(t||0.01);
@@ -165,6 +165,91 @@ ok(FL.parseIdea('2房1衛 大門朝東',{}).entry==='E'&&FL.parseIdea('2房1衛'
   ok(FL.toItems(P).every(x=>!x.loc.includes('非室內'))&&FL.toItems(P).some(x=>x.loc==='入口玄關'),'門窗轉丈量項目時位置不會寫成「非室內」');
   const rr=FL.fromSurvey(R4(3000,2500),{ext:150});ok(!rr.err&&rr.plan.FW===3300&&rr.plan.FD===2800&&rr.notch===0&&rr.voids===0,'小房間（3×2.5m）也能建立，不被最小尺寸卡住');
   ok(FL.fromSurvey({walls:[]},{}).err,'無效的丈量不會產生平面')}
+// DXF 匯入（光達掃描 App 的平面圖）：各家寫法——公尺／公分／公釐、轉角度、矩形／雙線／單線牆、區塊門、同一層的門弧、房名編碼
+{function dxf(ents,o){o=o||{};const L=[],g=(c,v)=>L.push(String(c),String(v));g(0,'SECTION');g(2,'HEADER');if(o.units){g(9,'$INSUNITS');g(70,o.units)}g(0,'ENDSEC');
+    const ent=e=>{const ly=e.L||'0';if(e.T==='L'){g(0,'LINE');g(8,ly);g(10,e.a[0]);g(20,e.a[1]);g(11,e.b[0]);g(21,e.b[1])}
+      else if(e.T==='LW'){g(0,'LWPOLYLINE');g(8,ly);g(90,e.v.length);g(70,e.cl?1:0);for(const p of e.v){g(10,p[0]);g(20,p[1])}}
+      else if(e.T==='PL'){g(0,'POLYLINE');g(8,ly);g(66,1);g(70,e.cl?1:0);for(const p of e.v){g(0,'VERTEX');g(8,ly);g(10,p[0]);g(20,p[1])}g(0,'SEQEND')}
+      else if(e.T==='A'){g(0,'ARC');g(8,ly);g(10,e.c[0]);g(20,e.c[1]);g(40,e.r);g(50,e.a0);g(51,e.a1)}
+      else if(e.T==='X'){g(0,e.mt?'MTEXT':'TEXT');g(8,ly);g(10,e.p[0]);g(20,e.p[1]);g(40,e.h||0.2);g(1,e.s)}
+      else if(e.T==='I'){g(0,'INSERT');g(8,ly);g(2,e.b);g(10,e.p[0]);g(20,e.p[1]);if(e.r)g(50,e.r)}};
+    if(o.blocks){g(0,'SECTION');g(2,'BLOCKS');for(const b of o.blocks){g(0,'BLOCK');g(8,'0');g(2,b.name);g(10,b.base[0]);g(20,b.base[1]);b.ents.forEach(ent);g(0,'ENDBLK')}g(0,'ENDSEC')}
+    g(0,'SECTION');g(2,'ENTITIES');ents.forEach(ent);g(0,'ENDSEC');g(0,'EOF');return L.join(o.crlf?'\r\n':'\n')+'\n'}
+  function wallRect(x1,y1,x2,y2,t,gaps,layer,poly){const hz=Math.abs(y2-y1)<1e-9,out=[],a0=hz?Math.min(x1,x2):Math.min(y1,y2),a1=hz?Math.max(x1,x2):Math.max(y1,y2),c=hz?y1:x1,segs=[];let cur=a0;
+    for(const [ga,gb] of gaps||[]){if(ga>cur)segs.push([cur,ga]);cur=gb}if(a1>cur)segs.push([cur,a1]);
+    for(const [u,v] of segs){const P=(a,n)=>hz?[a,c+n]:[c+n,a],q=[P(u,-t/2),P(v,-t/2),P(v,t/2),P(u,t/2)];if(poly)out.push({T:poly,L:layer,v:q,cl:1});else for(let i=0;i<4;i++)out.push({T:'L',L:layer,a:q[i],b:q[(i+1)%4]})}return out}
+  const t=0.15,W=5,D=4,E1=[...wallRect(-t,-t/2,W+t,-t/2,t,[[1.0,1.9]],'Walls'),...wallRect(-t,D+t/2,W+t,D+t/2,t,[[2.0,3.5]],'Walls'),...wallRect(-t/2,0,-t/2,D,t,[],'Walls'),...wallRect(W+t/2,0,W+t/2,D,t,[],'Walls'),
+    {T:'L',L:'Doors',a:[1.0,0],b:[1.0,0.9]},{T:'A',L:'Doors',c:[1.0,0],r:0.9,a0:0,a1:90},...[-0.05,0,0.05].map(dy=>({T:'L',L:'Windows',a:[2.0,D+t/2+dy],b:[3.5,D+t/2+dy]})),
+    {T:'PL',L:'Floor',v:[[0,0],[W,0],[W,D],[0,D]],cl:1},{T:'X',L:'Labels',p:[2.5,2],s:'\\fArial|b1;Living Room\\P',mt:1,h:0.25}];
+  const chk1=(r,tag)=>{const P=r.plan,o=P&&P.openings;ok(!r.err&&P.FW===5300&&P.FD===4300&&P.ext===150&&P.walls.length===0,tag+'：外框 5.3×4.3m、外牆厚 15 公分');
+    ok(o&&o.length===2&&o.some(x=>x.k==='door'&&x.wall==='S'&&x.s===1525&&x.w===900&&x.side===-1&&x.entry)&&o.some(x=>x.k==='win'&&x.wall==='N'&&x.s===2825&&x.w===1500),tag+'：門窗放進牆的缺口、門往室內開、設為大門');
+    ok(P&&P.labels.length===1&&P.labels[0].name==='Living Room'&&P.labels[0].type==='living',tag+'：MTEXT 房名去掉格式碼、判斷成客廳')};
+  const d1=dxf(E1),r1=CADIN.toPlan(CADIN.parse(d1));chk1(r1,'公尺＋矩形牆');ok(r1.info&&r1.info.unit==='公尺'&&r1.info.ua==='guess','沒有單位表頭時依尺寸判斷成公尺');
+  const A=30*Math.PI/180,f=p=>[(p[0]*Math.cos(A)-p[1]*Math.sin(A))*100,(p[0]*Math.sin(A)+p[1]*Math.cos(A))*100];
+  const E2=[...wallRect(-t,-t/2,W+t,-t/2,t,[[1.0,1.9]],'WALL','LW'),...wallRect(-t,D+t/2,W+t,D+t/2,t,[[2.0,3.5]],'WALL','LW'),...wallRect(-t/2,0,-t/2,D,t,[],'WALL','LW'),...wallRect(W+t/2,0,W+t/2,D,t,[],'WALL','LW'),...E1.filter(e=>e.L!=='Walls')]
+    .map(e=>e.T==='L'?{...e,a:f(e.a),b:f(e.b)}:e.T==='A'?{...e,c:f(e.c),r:e.r*100,a0:e.a0+30,a1:e.a1+30}:e.T==='X'?{...e,p:f(e.p),h:e.h*100}:{...e,v:e.v.map(f)});
+  const r2=CADIN.toPlan(CADIN.parse(dxf(E2,{crlf:true})));chk1(r2,'轉 30°＋公分＋LWPOLYLINE＋CRLF');ok(r2.info&&Math.abs(Math.abs(r2.info.rot)-30)<0.5&&r2.info.unit==='公分','偵測到轉了 30°、單位公分');
+  const t3=150,ti=100,E3=[...wallRect(-t3,-t3/2,8000+t3,-t3/2,t3,[[6000,7000]],'A-WALL'),...wallRect(-t3,6000+t3/2,8000+t3,6000+t3/2,t3,[[1000,2500],[5000,6500]],'A-WALL'),...wallRect(-t3/2,0,-t3/2,6000,t3,[],'A-WALL'),
+    ...wallRect(8000+t3/2,0,8000+t3/2,6000,t3,[],'A-WALL'),...wallRect(4000,0,4000,6000,ti,[[2500,3400]],'A-WALL'),{T:'A',L:'A-DOOR',c:[3950,2500],r:900,a0:90,a1:180},{T:'L',L:'A-DOOR',a:[3950,2500],b:[3050,2500]},
+    {T:'A',L:'A-DOOR',c:[6000,0],r:1000,a0:0,a1:90},{T:'L',L:'A-DOOR',a:[6000,0],b:[6000,1000]},...[[1000,2500],[5000,6500]].flatMap(([a,b])=>[-40,0,40].map(dy=>({T:'L',L:'A-GLAZ',a:[a,6075+dy],b:[b,6075+dy]}))),
+    {T:'X',L:'A-AREA-IDEN',p:[2000,3000],s:'主臥室',h:250},{T:'X',L:'A-AREA-IDEN',p:[2000,2600],s:'12.0 m²',h:150},{T:'X',L:'A-AREA-IDEN',p:[6000,3000],s:'\\U+5BA2\\U+5EF3',h:250},
+    {T:'L',L:'A-ANNO-TTLB',a:[-2000,-2000],b:[12000,-2000]},{T:'L',L:'A-ANNO-TTLB',a:[12000,-2000],b:[12000,9000]},{T:'L',L:'A-WALL-PATT',a:[0,-150],b:[150,0]},{T:'L',L:'A-ANNO-DIMS',a:[0,-800],b:[8000,-800]}];
+  const r3=CADIN.toPlan(CADIN.parse(dxf(E3,{units:4}))),P3=r3.plan;ok(!r3.err&&P3.FW===8300&&P3.FD===6300&&r3.info.ua==='header','兩房：讀表頭單位公釐、圖框／剖面線／尺寸線不當成牆');
+  ok(P3&&P3.walls.length===1&&P3.walls[0].x1===4150&&P3.walls[0].y1===75&&P3.walls[0].y2===6225&&P3.walls[0].t===100,'隔間牆兩端接到外牆中心線（房間才分得開）、牆厚 10 公分');
+  const S3=FL.summary(P3);ok(S3.list.length===2&&S3.list.some(x=>x.name==='主臥室'&&x.type==='master')&&S3.list.some(x=>x.name==='客廳'),'房名：\\U+ 中文解碼、面積文字不會被當成房名');
+  ok(P3.openings.length===4&&P3.openings.filter(o=>o.entry).length===1&&P3.openings.some(o=>o.wall===P3.walls[0].id&&o.k==='door'&&o.w===900),'隔間門掛在隔間牆上、外框門窗都在、大門只有一個');ok(!FL.check(P3).warn.length,'匯入的兩房沒有格局警告');
+  const L4=[[0,0],[10,0],[10,5],[6,5],[6,8],[0,8]],E4=L4.map((p,i)=>({T:'L',L:'0',a:p,b:L4[(i+1)%6]}));
+  const r4=CADIN.toPlan(CADIN.parse(dxf([...E4,{T:'I',L:'DOORS',b:'DOOR90',p:[2,0]}],{blocks:[{name:'DOOR90',base:[0,0],ents:[{T:'A',L:'0',c:[0,0],r:0.9,a0:0,a1:90},{T:'L',L:'0',a:[0,0],b:[0,0.9]}]}]})));
+  {const P=r4.plan,W=P.walls,v=W.find(w=>w.x1===w.x2),h=W.find(w=>w.y1===w.y2);
+    ok(!r4.err&&r4.info.voids===1&&r4.info.ext1===4&&P.ext===200&&P.FW===10400&&P.FD===8400,'L 形單線牆：線當成室內牆面，外框往外加 20 公分牆厚');
+    ok(W.length===2&&W.every(w=>w.outer&&w.t===200)&&v&&v.x1===6300&&v.y1===100&&v.y2===3100&&h&&h.y1===3100&&h.x1===6300&&h.x2===10300,'凹口牆也往非室內那側加牆厚、轉角對齊、接到外框中心線');
+    ok(near(FL.summary(P).tot,71.64,0.01),'室內淨尺寸不變（10×8 公尺扣凹口 4×3＝68 m²，中心線計 71.64 m²）')}
+  ok(r4.plan.openings.length===1&&r4.plan.openings[0].wall==='S'&&r4.plan.openings[0].entry,'區塊（INSERT）裡的門會展開，0 圖層繼承插入那層');
+  const r6=CADIN.toPlan(CADIN.parse(dxf([...E4,{T:'A',L:'0',c:[2,0],r:0.9,a0:0,a1:90},{T:'L',L:'0',a:[2,0],b:[2,0.9]}])));
+  ok(!r6.err&&r6.plan.openings.length===1&&r6.plan.walls.length===2,'全部畫在同一層：門弧認得出來、門扇線不會變成牆');
+  const r7=CADIN.toPlan(CADIN.parse(d1),{unit:'cm'});ok(r7.err&&r7.err.includes('單位'),'單位選錯會提示改單位');
+  ok(CADIN.parse('hello').err&&CADIN.toPlan(CADIN.parse(dxf([]))).err&&CADIN.toPlan(null).err,'不是 DXF、空檔案、沒資料都回清楚的錯誤');
+  const bad=CADIN.toPlan(CADIN.parse(dxf([{T:'L',L:'Walls',a:[0,0],b:[3,3]},{T:'L',L:'Walls',a:[0,3],b:[3,0]}])));ok(bad.err||bad.warn.some(w=>w.includes('斜')),'只有斜線時不會當掉');
+  {const txt=dxf(E2,{crlf:true}),P=CADIN.parser();for(let i=0;i<txt.length;i+=7)P.feed(txt.slice(i,i+7));ok(JSON.stringify(P.end())===JSON.stringify(CADIN.parse(txt)),'串流分段餵入（7 字元一段、CRLF 被切開）結果和整檔解析相同')}
+  {const P=CADIN.parser();P.feed('AutoCAD Binary DXF\r\n\x1a\x00'+'x'.repeat(5000));ok(P.stop()&&P.end().err,'二進位 DXF 一開頭就停，不會整個讀完')}
+  {const extra='0\nSECTION\n2\nOBJECTS\n0\nLINE\n8\nWalls\n10\n0\n20\n0\n11\n99\n21\n99\n0\nENDSEC\n0\nEOF\n',P=CADIN.parser();P.feed(d1.replace(/0\nEOF\n$/,''));ok(P.stop(),'圖元段讀完就停');P.feed(extra);ok(P.end().ents.length===CADIN.parse(d1).ents.length,'圖元段之後的 OBJECTS 段不讀')}
+  ok(!CADIN.parse('\uFEFF\n'+d1).err&&CADIN.toPlan(CADIN.parse('\uFEFF'+d1)).plan.FW===5300,'開頭有 BOM 或空行也讀得到');
+  {const r=CADIN.toPlan(CADIN.parse(dxf([...E1.filter(e=>e.T!=='X'),{T:'X',L:'Text',p:[2.5,2],s:'A\x01B\x07廚房',h:0.25}])));ok(r.plan.labels[0].name==='AB廚房','房名去掉控制字元（不然 DAE 的 XML 會壞）')}
+  {const face='0\n3DFACE\n8\nMesh\n10\n1\n20\n2\n30\n0\n',txt=d1.replace('2\nENTITIES\n','2\nENTITIES\n'+face.repeat(120000)),D=CADIN.parse(txt),r=CADIN.toPlan(D);
+    ok(!D.cut&&D.skip['3DFACE']===120000&&!r.err&&r.plan.FW===5300,'12 萬個 3D 網格面寫在平面圖前面：略過的不算進上限，牆線照樣讀到')}
+  {const P=CADIN.parser();P.feed('x'.repeat(1100000));ok(P.stop()&&P.end().err,'沒有換行的大檔馬上停止')}
+  /* 本 App 匯出 DXF 的畫法：外牆矩形在門窗處切開、內牆矩形伸進外牆中心線（端口短邊在牆裡面）、門弧是 16 段小直線、推拉門是兩片矩形、窗三條線、
+     分區線在 A-AREA-BNDY、大門箭頭在 A-DOOR-IDEN、房名下面一行坪數 */
+  {const e=200,i=120,E=[],R=(x0,y0,x1,y1,L)=>{const q=[[x0,y0],[x1,y0],[x1,y1],[x0,y1]];for(let k=0;k<4;k++)E.push({T:'L',L,a:q[k],b:q[(k+1)%4]})},Y=y=>-y;
+    R(0,Y(0),1000,Y(e),'A-WALL-EXTR');R(1900,Y(0),7000,Y(e),'A-WALL-EXTR');R(0,Y(6000-e),2000,Y(6000),'A-WALL-EXTR');R(3500,Y(6000-e),7000,Y(6000),'A-WALL-EXTR');
+    R(0,Y(e),e,Y(6000-e),'A-WALL-EXTR');R(7000-e,Y(e),7000,Y(6000-e),'A-WALL-EXTR');
+    R(3500-i/2,Y(100),3500+i/2,Y(2500),'A-WALL-INTR');R(3500-i/2,Y(3400),3500+i/2,Y(5900),'A-WALL-INTR');
+    const arc=(cx,cy,r,a0,a1,L)=>{for(let k=0;k<16;k++){const t0=(a0+(a1-a0)*k/16)*Math.PI/180,t1=(a0+(a1-a0)*(k+1)/16)*Math.PI/180;E.push({T:'L',L,a:[cx+r*Math.cos(t0),cy+r*Math.sin(t0)],b:[cx+r*Math.cos(t1),cy+r*Math.sin(t1)]})}};
+    arc(3500,Y(2500),900,0,-90,'A-DOOR-SWNG');E.push({T:'L',L:'A-DOOR',a:[3500,Y(2500)],b:[3500+900*Math.cos(-Math.PI/2),Y(2500)-900]});
+    R(2000,Y(5930),2800,Y(5960),'A-DOOR');R(2700,Y(5900),3500,Y(5930),'A-DOOR');
+    for(const d of [50,100,150])E.push({T:'L',L:'A-GLAZ',a:[1000,Y(d)],b:[1900,Y(d)]});
+    E.push({T:'L',L:'A-AREA-BNDY',a:[5000,Y(100)],b:[5000,Y(2000)]},{T:'L',L:'A-AREA-BNDY',a:[5000,Y(2000)],b:[6900,Y(2000)]});
+    E.push({T:'L',L:'A-DOOR-IDEN',a:[6500,Y(6000)],b:[6500,Y(5000)]},{T:'X',L:'A-DOOR-IDEN',p:[6000,Y(6500)],s:'入口玄關',h:196});
+    E.push({T:'X',L:'A-AREA-IDEN',p:[1700,Y(3000)],s:'主臥室',h:236},{T:'X',L:'A-AREA-IDEN',p:[1700,Y(3300)],s:'5.9 坪',h:180},{T:'X',L:'A-AREA-IDEN',p:[4300,Y(4500)],s:'客廳',h:236},
+      {T:'X',L:'A-AREA-IDEN',p:[6000,Y(4500)],s:'餐廳',h:236},{T:'X',L:'A-AREA-IDEN',p:[6000,Y(1000)],s:'玄關',h:236},{T:'X',L:'A-FURN-IDEN',p:[1700,Y(1500)],s:'雙人床',h:185},
+      {T:'X',L:'A-ANNO-NOTE',p:[4300,Y(5200)],s:'此處備註',h:90});
+    const r=CADIN.toPlan(CADIN.parse(dxf(E,{units:4}))),P=r.plan||{},W=P.walls||[],O=P.openings||[],iw=W.filter(w=>!w.virt),vw=W.filter(w=>w.virt);
+    ok(!r.err&&P.FW===7000&&P.FD===6000&&P.ext===200&&r.info.ext1===0,'矩形牆：外牆厚 20 公分，端口短邊不會配成假牆');
+    ok(iw.length===1&&iw[0].x1===3500&&iw[0].y1===100&&iw[0].y2===5900&&iw[0].t===120,'內牆中心線、牆厚 12 公分、兩端接外牆中心線（門洞那段接起來）');
+    ok(vw.length===2&&vw.some(w=>w.x1===5000&&w.y1===100&&w.y2===2000)&&vw.some(w=>w.y1===2000&&w.x1===5000&&w.x2===6900),'A-AREA-BNDY 變成分區線');
+    ok(O.length===3&&O.some(o=>o.k==='door'&&o.wall===iw[0].id&&o.w===900)&&O.some(o=>o.k==='sdoor'&&o.wall==='S'&&o.w===1500&&o.entry)&&O.some(o=>o.k==='win'&&o.wall==='N'&&o.w===900),'16 段小直線的門弧認成平開門、兩片矩形是推拉門、大門箭頭不會變成門');
+    const lab=(P.labels||[]).map(l=>l.name).sort().join(',');ok(lab==='主臥室,客廳,玄關,餐廳','房名：同一區的客廳／餐廳都留、坪數與家具名稱與小字備註不當房名（'+lab+'）');
+    ok(FL.check(P).warn.every(w=>w.includes('對外窗')),'格局檢查只剩「客廳沒有對外窗」（這張測試圖本來就沒畫）')}
+  /* 光達掃描 App 常見畫法：每面牆一條線（掃到的室內牆面）、窗直接畫在牆線上（沒切缺口）、門弧跨 0°（270°→0°） */
+  {const E=[[0,0],[4.2,0],[4.2,3.6],[0,3.6]].map((p,i,a)=>({T:'L',L:'Wall',a:p,b:a[(i+1)%4]}));E.push({T:'L',L:'Window',a:[1.2,3.6],b:[2.7,3.6]},{T:'A',L:'Door',c:[3.3,0],r:0.8,a0:270,a1:0},{T:'L',L:'Door',a:[3.3,0],b:[4.1,0]},{T:'X',L:'Room Names',p:[2.1,1.8],s:'Bedroom\\P12.5 m²',mt:1,h:0.2});
+    const r=CADIN.toPlan(CADIN.parse(dxf(E,{units:6})),{ext:150}),P=r.plan||{},O=P.openings||[];
+    ok(!r.err&&P.FW===4500&&P.FD===3900&&P.ext===150&&r.info.ext1===4,'單線房間：室內 4.2×3.6 公尺不變，外牆厚用指定的 15 公分');
+    ok(O.length===2&&O.some(o=>o.k==='win'&&o.wall==='N'&&o.w===1500&&o.s===2025)&&O.some(o=>o.k==='door'&&o.wall==='S'&&o.w===800&&o.s===3775&&o.entry),'牆線沒切缺口時，門窗照圖元自己的寬度擺；跨 0° 的門弧也認得');
+    ok((P.labels||[]).length===1&&P.labels[0].name==='Bedroom'&&P.labels[0].type==='bed','房名後面的面積去掉')}
+  {const r=CADIN.toPlan(CADIN.parse(dxf([...E1.filter(e=>e.T!=='X'),...['12.5 m² (3.8 坪)','3.0 坪','4,200 x 3,600','2.4m','Kitchen'].map((s,i)=>({T:'X',L:'Text',p:[0.5+i*0.8,1],s,h:0.25}))])));
+    ok(!r.err&&r.plan.labels.length===1&&r.plan.labels[0].name==='Kitchen'&&r.plan.labels[0].type==='kitchen','純面積、尺寸文字（m²、坪、x、m）不當房名，真正的房名留下');
+    ok(CADIN.typeOf('Master Bedroom')==='master'&&CADIN.typeOf('主臥衛浴')==='master'&&CADIN.typeOf('客用衛浴')==='bath'&&CADIN.typeOf('Living Room')==='living'&&CADIN.typeOf('倉庫')==='other','房名判斷房型')}
+  ok(['A-WALL-EXTR:wall','A-WALL-PATT:skip','A-DOOR-SWNG:door','A-GLAZ:window','Floor:floor','A-ANNO-TTLB:skip','0:other','窗:window','Furniture:skip'].every(x=>{const [l,r]=x.split(':');return CADIN.roleOf(l)===r}),'圖層名稱判斷用途')}
 // DAE（COLLADA 1.4.1）寫出：結構、參照、數量、名稱合法性
 {const sq={c:'#C8955E',mat:'木地板',p:[0,0,0,1,0,0,1,0,1,0,0,1],n:[0,1,0,0,1,0,0,1,0,0,1,0],i:[0,1,2,0,2,3]};
   const gl={c:'#8fc3e8',a:0.35,mat:'玻璃',p:[0,0,0,1,0,0,0,1,0],i:[0,1,2]};
