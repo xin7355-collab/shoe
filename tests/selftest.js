@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-/* 丈量大師 離線自我測試：從 index.html 抽出 @@PURE 區塊（家具庫、範本、構想解析、用電估算、整層平面、DAE 寫出、DXF 匯入）單獨驗證。
+/* 丈量大師 離線自我測試：從 index.html 抽出 @@PURE 區塊（家具庫、範本、構想解析、用電估算、整層平面、DAE 寫出、DXF 匯入、裝修工項）單獨驗證。
  * 用法：node tests/selftest.js　（不需網路、不需安裝套件） */
 'use strict';
 const fs=require('fs'),path=require('path');
 const html=fs.readFileSync(path.join(__dirname,'..','index.html'),'utf8');
 const m=html.match(/\/\*@@PURE-START[\s\S]*?\*\/([\s\S]*?)\/\*@@PURE-END\*\//);
 if(!m){console.error('✗ 找不到 @@PURE 區塊');process.exit(1)}
-const {ROOM:R,RENDER:RD,FLOOR:FL,DAE,CADIN}=new Function(m[1]+'\nreturn {ROOM,RENDER,FLOOR,DAE,CADIN};')();
+const {ROOM:R,RENDER:RD,FLOOR:FL,DAE,CADIN,WORK:WK}=new Function(m[1]+'\nreturn {ROOM,RENDER,FLOOR,DAE,CADIN,WORK};')();
 let fail=0,pass=0;
 const ok=(c,msg)=>{if(c)pass++;else{fail++;console.error('✗ '+msg)}};
 const near=(a,b,t)=>Math.abs(a-b)<=(t||0.01);
@@ -55,7 +55,21 @@ q=R.fromIdea('乾濕分離浴室 長240 寬180公分');ok(q.tpl==='bath'&&q.W===
 ok(R.parseIdea('L型廚房').tpl==='kitL'&&R.parseIdea('有浴缸的浴室').tpl==='bath2','L型廚房／浴缸');
 ok(R.cnNum('二十')===20&&R.cnNum('十五')===15&&R.cnNum('八')===8,'中文數字');
 ok(R.parseIdea('隨便').tpl==='blank','無法判斷時用空白房間');
-for(const t of R.PROJ)for(const [ty] of t.items)ok(['slide','fixed','casement','louver','door','canopy','shaped','room'].includes(ty),'整案範本類型：'+ty);
+for(const t of R.PROJ)for(const [ty,,pp] of t.items){ok(['slide','fixed','casement','louver','door','canopy','shaped','room','work'].includes(ty),'整案範本類型：'+ty);
+  if(ty==='work'){const f=WK.find(pp.name);ok(f&&f.unit===pp.unit&&f.cat===pp.cat,`整案範本的工項在工項庫裡、類別與單位一致：${pp.name}`)}}
+/* 裝修工項：工項庫完整、單位換算、尺寸優先、金額取整、匯入清理 */
+{const names=new Set();let bad=0;for(const [c,l] of WK.LIB){ok(c&&l.length>0,'工項類別有內容：'+c);for(const [n,u] of l){if(!n||!WK.UM[u]||names.has(n))bad++;names.add(n)}}
+  ok(!bad&&names.size>=70,`工項庫 ${names.size} 項：品名不重複、單位都在單位表裡`);ok(WK.CATS[WK.CATS.length-1]==='其他','類別最後是「其他」');
+  const q=o=>WK.qty({unit:'式',a:0,b:0,n:0,...o});
+  ok(q({unit:'坪',a:3305.8,b:1000})===1,'坪：330.58 × 100 公分＝1 坪');ok(q({unit:'m²',a:2500,b:2000})===5,'m²：2.5 × 2 公尺＝5 m²');
+  ok(q({unit:'才',a:303,b:303})===1&&q({unit:'才',a:1800,b:1200})===23.53,'才：30.3 × 30.3 公分＝1 才（台尺見方）；180 × 120 公分＝23.53 才（跟門窗算法一樣）');ok(q({unit:'尺',a:2424.24})===8,'尺：242.4 公分＝8 台尺');ok(q({unit:'m',a:3500})===3.5,'m：350 公分＝3.5 m');
+  ok(q({unit:'坪',a:3000,n:7.5})===7.5&&!WK.auto({unit:'坪',a:3000,b:0}),'坪只填一邊：不算尺寸，用手填的數量');
+  ok(q({unit:'坪',a:3000,b:3000,n:99})===2.72,'坪兩邊都填：用尺寸算（取 2 位小數），忽略手填數量');ok(q({unit:'口',a:9999,b:9999,n:6})===6,'個數類單位不看尺寸');
+  ok(WK.amount({unit:'坪',a:3000,b:3000,price:2800})===7616&&WK.amount({unit:'式',n:1,price:0})===0,'金額＝數量（2 位小數）× 單價，四捨五入到元');
+  ok(q({unit:'式',n:-3})===0&&WK.amount({unit:'式',n:2,price:-50})===0,'負的數量、單價當 0');
+  const c=WK.clean({cat:'<b>很長很長很長很長的類別</b>',name:'x'.repeat(99),spec:'y'.repeat(999),unit:'公斤',a:-5,b:'abc',n:1e9,price:'1e12',evil:'<img src=x>'});
+  ok(c.cat.length===12&&c.name.length===40&&c.spec.length===300&&c.unit==='式'&&c.a===0&&c.b===0&&c.n===1e6&&c.price===1e8&&!('evil' in c),'匯入清理：字串限長、單位白名單、數字夾回範圍、不明欄位丟掉');
+  ok(WK.clean(null).unit==='式'&&WK.clean({unit:'才',n:'2.456'}).n===2.46,'匯入清理：空資料給預設、數量 2 位小數')}
 
 // AI 渲染提示詞
 for(const c of R.C)ok(c.k in RD.EN,'家具缺英文名：'+c.k);
@@ -249,6 +263,50 @@ ok(FL.parseIdea('2房1衛 大門朝東',{}).entry==='E'&&FL.parseIdea('2房1衛'
   {const r=CADIN.toPlan(CADIN.parse(dxf([...E1.filter(e=>e.T!=='X'),...['12.5 m² (3.8 坪)','3.0 坪','4,200 x 3,600','2.4m','Kitchen'].map((s,i)=>({T:'X',L:'Text',p:[0.5+i*0.8,1],s,h:0.25}))])));
     ok(!r.err&&r.plan.labels.length===1&&r.plan.labels[0].name==='Kitchen'&&r.plan.labels[0].type==='kitchen','純面積、尺寸文字（m²、坪、x、m）不當房名，真正的房名留下');
     ok(CADIN.typeOf('Master Bedroom')==='master'&&CADIN.typeOf('主臥衛浴')==='master'&&CADIN.typeOf('客用衛浴')==='bath'&&CADIN.typeOf('Living Room')==='living'&&CADIN.typeOf('倉庫')==='other','房名判斷房型')}
+  /* Lagarsoft 那種 DXF：兩次掃描同一間（地板外框重疊）、門只有一條線、1.4 公尺的小浴室 */
+  {const room=(dx,dy,dw,ww)=>{const P=[[0,0],[1.41,0],[1.41,1.32],[0,1.32]].map(([x,y])=>[x+dx,y+dy]);return [...P.map((p,i)=>({T:'L',L:'WALLS',a:p,b:P[(i+1)%4]})),{T:'PL',L:'FLOOR',v:P,cl:1},
+      {T:'L',L:'DOORS',a:[0.3+dx,dy],b:[0.3+dw+dx,dy]},{T:'L',L:'WINDOWS',a:[0.4+dx,1.32+dy],b:[0.4+ww+dx,1.32+dy]},{T:'X',L:'DIMS',p:[0.7+dx,0.6+dy],s:'1.9 m2',h:0.13}]};
+    const D=CADIN.parse(dxf([...room(0.64,-0.23,0.622,0.788),...room(0,0,0.642,0.752),{T:'X',L:'NORTH',p:[-0.4,2.4],s:'N',h:0.15}])),r1=CADIN.toPlan(D,{ext:200}),r0=CADIN.toPlan(D,{ext:200,pick:0});
+    const ow=r=>r.plan.openings.map(o=>o.k+o.w).sort().join();
+    ok(!r1.err&&r1.info.dup&&r1.info.dup.n===2&&r1.info.dup.pick===1&&r1.plan.FW===1810&&r1.plan.FD===1720&&ow(r1)==='door642,win752','兩次掃描重疊：預設用後面那次（室內 141×132、門 64.2、窗 75.2），不會配出假的厚牆');
+    ok(!r0.err&&ow(r0)==='door622,win788'&&r0.warn.some(w=>w.includes('第 1 次')),'可以改用第 1 次掃描');
+    ok(r1.plan.openings.find(o=>o.w===642).k==='door','門只有一條線（沒畫開門弧）：當一般門，不是拉門');
+    ok(!r1.warn.some(w=>w.includes('不太對'))&&r1.plan.labels.length===1&&r1.plan.labels[0].name==='室內','1.4 公尺的浴室不算單位錯；指北針的「N」不當房名')}
+  /* Apple RoomPlan（光達掃描原始資料）：合成一間轉 10° 的 3.2×2.6 m 臥室 */
+  {const th=10*Math.PI/180,R=(x,z)=>[x*Math.cos(th)-z*Math.sin(th),x*Math.sin(th)+z*Math.cos(th)];
+    const S=(id,cat,w,h,lx,lz,y,along,par)=>{const a=th+(along==='z'?Math.PI/2:0),[x,z]=R(lx,lz);return {identifier:id,parentIdentifier:par||null,category:{[cat]:cat==='door'?{isOpen:true}:{}},dimensions:[w,h,0],
+      transform:[Math.cos(a),0,Math.sin(a),0,0,1,0,0,-Math.sin(a),0,Math.cos(a),0,x,y,z,1],polygonCorners:[],completedEdges:[],confidence:{high:{}},curve:null,story:0}};
+    const room={walls:[S('wN','wall',3.2,2.8,0,-1.3,0),S('wS','wall',3.2,2.8,0,1.3,0),S('wW','wall',2.6,2.8,-1.6,0,0,'z'),S('wE','wall',2.6,2.8,1.6,0,0,'z')],
+      doors:[S('d1','door',0.9,2.05,-0.8,1.3,-1.4+1.025,'x','wS')],windows:[S('n1','window',1.5,1.2,0.5,-1.3,-1.4+0.9+0.6,'x','wN'),S('n2','window',1.8,2.2,1.6,0.2,-1.4+1.1,'z','wE')],openings:[],
+      objects:[{...S('b1','bed',1.52,0.5,-0.5,-0.36,-1.15),dimensions:[1.52,0.5,1.88]},{...S('f1','fireplace',1,1,0.8,0.5,-1)}],sections:[{label:'bedroom',center:[0,0,0],story:0}],
+      floors:[{...S('fl','floor',3.2,2.6,0,0,-1.4),transform:[Math.cos(th),0,Math.sin(th),0,Math.sin(th),0,-Math.cos(th),0,0,1,0,0,0,-1.4,0,1],polygonCorners:[[-1.6,-1.3,0],[1.6,-1.3,0],[1.6,1.3,0],[-1.6,1.3,0]]}]};
+    const r=CADIN.fromRP(room,{ext:200}),P=r.plan||{},O=P.openings||[],ob=(P.objs||[])[0]||{};
+    ok(!r.err&&P.FW===3600&&P.FD===3000&&P.RH===2800&&Math.abs(r.info.rot)===10,'RoomPlan：轉正 10°、室內 3.2×2.6 m 不變（外框加牆厚）、天花板 2.8 m');
+    ok(O.length===3&&O.some(o=>o.k==='door'&&o.wall==='S'&&o.w===900&&o.h===2050&&o.entry)&&O.some(o=>o.k==='win'&&o.wall==='N'&&o.w===1500&&o.h===1200&&o.sill===900),'門 90×205、窗 150×120 窗台 90，掛在正確的牆');
+    ok(O.some(o=>o.k==='fwin'&&o.wall==='E'&&o.w===1800&&o.h===2200&&o.sill===0),'窗台貼地、2.2 m 高的窗變成落地窗');
+    ok(P.labels.length===1&&P.labels[0].name==='臥室'&&P.labels[0].type==='bed','房間類型 bedroom → 臥室');
+    ok(P.objs.length===1&&ob.k==='bedD'&&ob.r===0&&ob.w===1520&&ob.d===1880&&Math.abs(ob.x-(200+1100))<=2&&Math.abs(ob.y-(200+940))<=2,'床：152 寬 → 雙人床、床頭靠北牆、位置與大小照掃描');
+    ok(r.warn.some(w=>w.includes('1 件設備')),'沒有對應圖塊的設備（壁爐）會說略過幾件');
+    /* 兩間房共用一道牆、中間是沒有門的開口：牆切開成通道 */
+    const two={walls:[S('a','wall',6,2.8,0,-1.5,0),S('b','wall',6,2.8,0,1.5,0),S('c','wall',3,2.8,-3,0,0,'z'),S('d','wall',3,2.8,3,0,0,'z'),S('m','wall',3,2.8,0,0,0,'z')],
+      doors:[S('e','door',1,2.1,-1.5,1.5,-0.35,'x','b')],windows:[],openings:[S('o','opening',1,2.1,0,0,-0.35,'z','m')],objects:[],floors:[],
+      sections:[{label:'livingRoom',center:[...R(-1.5,0).slice(0,1),0,R(-1.5,0)[1]]},{label:'diningRoom',center:[R(1.5,0)[0],0,R(1.5,0)[1]]}]};
+    const r2=CADIN.fromRP(two,{ext:200}),iw=(r2.plan||{walls:[]}).walls.filter(w=>!w.virt);
+    ok(!r2.err&&iw.length===2&&iw.every(w=>w.x1===w.x2&&w.x1===3200)&&r2.plan.openings.length===1,'沒有門的開口把中間那道牆切成兩段（通道），不會變成門');
+    ok(r2.plan.labels.map(l=>l.name).sort().join()==='客廳,餐廳','兩個房間類型都留下');
+    /* Lagarsoft 的 {rooms,structure}：有 structure 就用它；只有 rooms 時重疊的只留最後一次 */
+    const sh=JSON.parse(JSON.stringify(room));for(const k of ['walls','doors','windows'])for(const o of sh[k])o.transform[12]+=0.3;
+    const r3=CADIN.fromRP({rooms:[room,sh]},{ext:200}),r4=CADIN.fromRP({rooms:[room,sh],structure:room},{ext:200});
+    ok(!r3.err&&r3.warn.some(w=>w.includes('重複掃描'))&&r3.plan.FW===3600&&!r4.err&&!r4.warn.some(w=>w.includes('重複')),'同一間掃兩次：沒有合併結構時只用最後一次；有 structure 直接用');
+    ok(CADIN.fromRP(null).err&&CADIN.fromRP({walls:[]}).err&&CADIN.fromRP({foo:1}).err&&CADIN.fromRP({walls:[{category:{wall:{}},transform:'x'}]}).err,'不是掃描資料、沒有牆、矩陣壞掉都回清楚的錯誤');
+    /* Lagarsoft 的 USDZ 是文字 USDA：轉回同樣的結構 */
+    const usd=o=>{const T=o.transform,row=i=>`(${T.slice(i*4,i*4+4).join(', ')})`;const c=Object.keys(o.category)[0];
+      return `def Xform "X" (\n    customData = {\n        string Category = "${c==='door'?'Door(Isopen: True)':c.charAt(0).toUpperCase()+c.slice(1)}"\n    }\n)\n{\n    def Cube "X"\n    {\n        double3 xformOp:scale = (${o.dimensions[0]}, ${o.dimensions[1]}, 0.0001)\n        matrix4d xformOp:transform = ( ${row(0)}, ${row(1)}, ${row(2)}, ${row(3)} )\n        uniform token[] xformOpOrder = ["xformOp:transform", "xformOp:scale"]\n    }\n}\n`};
+    const tx=[...room.walls,...room.doors,...room.windows].map(usd);tx.push(`def Xform "Section_grp" (\n    kind = "group"\n)\n{\n    def Xform "bedroom0" (\n        kind = "assembly"\n    )\n    {\n        matrix4d xformOp:transform = ( (1, 0, 0, 0), (0, 1, 0, 0), (0, 0, 1, 0), (0, 0, 0, 1) )\n    }\n}\n`);
+    const U=CADIN.fromUSDA(tx),r5=CADIN.fromRP(U,{ext:200});
+    ok(!U.err&&U.walls.length===4&&U.doors.length===1&&U.windows.length===2&&U.sections[0].label==='bedroom','USDA：讀出 4 牆、1 門、2 窗、房間類型');
+    ok(!r5.err&&r5.plan.FW===3600&&r5.plan.RH===2800&&r5.plan.openings.some(o=>o.k==='fwin')&&r5.plan.labels[0].name==='臥室','USDA 轉出的平面跟 RoomPlan JSON 一樣');
+    ok(CADIN.fromUSDA(['#usda 1.0\n']).err&&CADIN.fromUSDA([]).err,'讀不出東西的 USDZ 回錯誤')}
   ok(['A-WALL-EXTR:wall','A-WALL-PATT:skip','A-DOOR-SWNG:door','A-GLAZ:window','Floor:floor','A-ANNO-TTLB:skip','0:other','窗:window','Furniture:skip'].every(x=>{const [l,r]=x.split(':');return CADIN.roleOf(l)===r}),'圖層名稱判斷用途')}
 // DAE（COLLADA 1.4.1）寫出：結構、參照、數量、名稱合法性
 {const sq={c:'#C8955E',mat:'木地板',p:[0,0,0,1,0,0,1,0,1,0,0,1],n:[0,1,0,0,1,0,0,1,0,0,1,0],i:[0,1,2,0,2,3]};
